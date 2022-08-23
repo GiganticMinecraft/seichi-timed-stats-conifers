@@ -17,23 +17,31 @@ impl<T: FromEnvLikeKeyValuePairs> FromEnv for T {
     }
 }
 
+#[derive(Deserialize, Eq, PartialEq, Debug)]
+pub struct Port(pub u16);
+
 #[derive(Deserialize, Debug)]
 pub struct AppConfig {
-    pub source_database_config: SourceDatabaseConfig,
-    pub http_config: HttpConfig,
+    pub game_data_server_config: GameDataServerConfig,
+    pub target_database_config: ConiferDatabaseConfig,
 }
 
 impl FromEnvLikeKeyValuePairs for AppConfig {
     fn from_iter(iter: impl Iterator<Item = (String, String)> + Clone) -> Result<Self, Error> {
         Ok(Self {
-            source_database_config: SourceDatabaseConfig::from_iter(iter.clone())?,
-            http_config: HttpConfig::from_iter(iter)?,
+            game_data_server_config: GameDataServerConfig::from_iter(iter.clone())?,
+            target_database_config: ConiferDatabaseConfig::from_iter(iter.clone())?,
         })
     }
 }
 
 #[derive(Deserialize, Debug)]
-pub struct SourceDatabaseConfig {
+pub struct GameDataServerConfig {
+    pub grpc_endpoint_url: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ConiferDatabaseConfig {
     pub host: String,
     pub port: Port,
     pub database_name: String,
@@ -41,25 +49,15 @@ pub struct SourceDatabaseConfig {
     pub password: String,
 }
 
-impl FromEnvLikeKeyValuePairs for SourceDatabaseConfig {
+impl FromEnvLikeKeyValuePairs for GameDataServerConfig {
     fn from_iter(iter: impl Iterator<Item = (String, String)>) -> Result<Self, Error> {
-        envy::prefixed("DB_").from_iter(iter)
+        envy::prefixed("GAME_DATA_SERVER_").from_iter(iter)
     }
 }
 
-#[allow(clippy::module_name_repetitions)]
-#[derive(Deserialize, Debug)]
-pub struct HttpConfig {
-    pub host: String,
-    pub port: Port,
-}
-
-#[derive(Deserialize, Eq, PartialEq, Debug)]
-pub struct Port(pub u16);
-
-impl FromEnvLikeKeyValuePairs for HttpConfig {
+impl FromEnvLikeKeyValuePairs for ConiferDatabaseConfig {
     fn from_iter(iter: impl Iterator<Item = (String, String)>) -> Result<Self, Error> {
-        envy::prefixed("HTTP_").from_iter(iter)
+        envy::prefixed("CONIFER_DB_").from_iter(iter)
     }
 }
 
