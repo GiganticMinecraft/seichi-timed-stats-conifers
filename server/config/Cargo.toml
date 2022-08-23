@@ -6,4 +6,4 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.62"
 envy = "0.4.2"
-serde = { version = "1.0.143", features = ["derive"] }
+serde = { version = "1.0.144", features = ["derive"] }
