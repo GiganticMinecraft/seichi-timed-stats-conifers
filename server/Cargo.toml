@@ -1,0 +1,3 @@
+[workspace]
+
+members = ["app", "config", "domain", "infra/grpc", "infra/repository_impl"]
