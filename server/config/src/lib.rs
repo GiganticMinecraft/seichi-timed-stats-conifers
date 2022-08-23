@@ -30,7 +30,7 @@ impl FromEnvLikeKeyValuePairs for AppConfig {
     fn from_iter(iter: impl Iterator<Item = (String, String)> + Clone) -> Result<Self, Error> {
         Ok(Self {
             game_data_server_config: GameDataServerConfig::from_iter(iter.clone())?,
-            target_database_config: ConiferDatabaseConfig::from_iter(iter.clone())?,
+            target_database_config: ConiferDatabaseConfig::from_iter(iter)?,
         })
     }
 }
