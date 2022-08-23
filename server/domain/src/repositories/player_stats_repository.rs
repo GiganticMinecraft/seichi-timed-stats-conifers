@@ -1,9 +1,10 @@
-use crate::models::{PlayerBreakCount, PlayerBuildCount, PlayerPlayTicks, PlayerVoteCount};
-use crate::types::TimeStamped;
+use crate::models::{
+    PlayerBreakCount, PlayerBuildCount, PlayerPlayTicks, PlayerVoteCount, StatsSnapshot,
+};
 
 #[async_trait::async_trait]
 pub trait PlayerStatsRepository<PlayerStats> {
-    async fn fetch_stats_of_all_players(&self) -> TimeStamped<Vec<PlayerStats>>;
+    async fn fetch_stats_snapshot_of_all_players(&self) -> StatsSnapshot<PlayerStats>;
 }
 
 pub trait PlayerBreakCountRepository: PlayerStatsRepository<PlayerBreakCount> {}
