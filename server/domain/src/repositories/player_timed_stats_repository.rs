@@ -1,7 +1,7 @@
 use crate::models::{
     PlayerBreakCount, PlayerBuildCount, PlayerPlayTicks, PlayerUuidString, PlayerVoteCount,
+    StatsSnapshot,
 };
-use crate::types::StatsSnapshot;
 use chrono::{DateTime, Utc};
 use std::collections::HashSet;
 
