@@ -5,7 +5,7 @@ on:
       - '**.md'
 
 env:
-  image_name: ghcr.io/giganticminecraft/seichi-timed-stats-conifer
+  image_name: ghcr.io/giganticminecraft/seichi-timed-stats-conifers
 
 jobs:
   lint-and-test:

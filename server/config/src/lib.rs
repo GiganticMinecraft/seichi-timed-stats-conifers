@@ -57,7 +57,7 @@ impl FromEnvLikeKeyValuePairs for GameDataServerConfig {
 
 impl FromEnvLikeKeyValuePairs for ConiferDatabaseConfig {
     fn from_iter(iter: impl Iterator<Item = (String, String)>) -> Result<Self, Error> {
-        envy::prefixed("CONIFER_DB_").from_iter(iter)
+        envy::prefixed("CONIFERS_DB_").from_iter(iter)
     }
 }
 
@@ -73,17 +73,17 @@ mod test {
                 "https://game-data-server-url.local/grpc".to_string(),
             ),
             (
-                "CONIFER_DB_HOST".to_string(),
+                "CONIFERS_DB_HOST".to_string(),
                 "example-db-host.local".to_string(),
             ),
-            ("CONIFER_DB_PORT".to_string(), "3307".to_string()),
+            ("CONIFERS_DB_PORT".to_string(), "3307".to_string()),
             (
-                "CONIFER_DB_DATABASE_NAME".to_string(),
-                "conifer".to_string(),
+                "CONIFERS_DB_DATABASE_NAME".to_string(),
+                "conifers".to_string(),
             ),
-            ("CONIFER_DB_USER".to_string(), "mysql".to_string()),
+            ("CONIFERS_DB_USER".to_string(), "mysql".to_string()),
             (
-                "CONIFER_DB_PASSWORD".to_string(),
+                "CONIFERS_DB_PASSWORD".to_string(),
                 "$tr0ngpAssw0rd".to_string(),
             ),
         ];

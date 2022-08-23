@@ -27,6 +27,6 @@ COPY --link . .
 RUN cargo build --release
 
 FROM gcr.io/distroless/cc
-LABEL org.opencontainers.image.source=https://github.com/GiganticMinecraft/seichi-timed-stats-conifer
-COPY --from=build-env --link /app/target/release/seichi-timed-stats-conifer /
-CMD ["./seichi-timed-stats-conifer"]
+LABEL org.opencontainers.image.source=https://github.com/GiganticMinecraft/seichi-timed-stats-conifers
+COPY --from=build-env --link /app/target/release/seichi-timed-stats-conifers /
+CMD ["./seichi-timed-stats-conifers"]

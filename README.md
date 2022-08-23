@@ -1,2 +1,2 @@
-# seichi-timed-stats-conifer
+# seichi-timed-stats-conifers
 整地鯖のプレーヤー統計量を時系列順にトポロジカルソートされた森として記録していくサーバー
