@@ -34,7 +34,7 @@ async fn scheduled_snapshots_piping_process() -> JobScheduler {
 
     scheduler
         .add(
-            Job::new("0 5 * * * *", |_uuid, _l| {
+            Job::new_async("0 5 * * * *", |_uuid, _l| async {
                 // TODO: run piping process here
             })
             .unwrap(),
