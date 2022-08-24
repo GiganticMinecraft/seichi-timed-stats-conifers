@@ -3,6 +3,7 @@
 #![allow(clippy::cargo_common_metadata)]
 
 use config::{AppConfig, FromEnv};
+use tokio_cron_scheduler::{Job, JobScheduler};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -20,5 +21,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Reading config...");
     let _config = AppConfig::from_env()?;
 
+    let scheduler = scheduled_snapshots_piping_process().await;
+    let scheduler_join_handle = scheduler.start().await.unwrap();
+
+    tokio::try_join!(scheduler_join_handle);
+
     Ok(())
+}
+
+async fn scheduled_snapshots_piping_process() -> JobScheduler {
+    let scheduler = JobScheduler::new().await.unwrap();
+
+    scheduler
+        .add(
+            Job::new("0 5 * * * *", |_uuid, _l| {
+                // TODO: run piping process here
+            })
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    scheduler
 }
