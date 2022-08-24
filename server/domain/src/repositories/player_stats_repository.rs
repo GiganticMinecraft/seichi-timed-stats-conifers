@@ -1,6 +1,4 @@
-use crate::models::{
-    PlayerBreakCount, PlayerBuildCount, PlayerPlayTicks, PlayerVoteCount, StatsSnapshot,
-};
+use crate::models::StatsSnapshot;
 
 #[async_trait::async_trait]
 pub trait PlayerStatsRepository<PlayerStats> {
