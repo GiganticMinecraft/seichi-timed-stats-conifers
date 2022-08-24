@@ -27,15 +27,3 @@ pub trait PlayerTimedStatsRepository<PlayerStats> {
         filter: ReadFilter,
     ) -> anyhow::Result<Option<StatsSnapshot<PlayerStats>>>;
 }
-
-pub trait PlayerTimedBreakCountRepository: PlayerTimedStatsRepository<PlayerBreakCount> {}
-impl<T> PlayerTimedBreakCountRepository for T where T: PlayerTimedStatsRepository<PlayerBreakCount> {}
-
-pub trait PlayerTimedBuildCountRepository: PlayerTimedStatsRepository<PlayerBuildCount> {}
-impl<T> PlayerTimedBuildCountRepository for T where T: PlayerTimedStatsRepository<PlayerBuildCount> {}
-
-pub trait PlayerTimedVoteCountRepository: PlayerTimedStatsRepository<PlayerVoteCount> {}
-impl<T> PlayerTimedVoteCountRepository for T where T: PlayerTimedStatsRepository<PlayerVoteCount> {}
-
-pub trait PlayerTimedPlayTicksRepository: PlayerTimedStatsRepository<PlayerPlayTicks> {}
-impl<T> PlayerTimedPlayTicksRepository for T where T: PlayerTimedStatsRepository<PlayerPlayTicks> {}
