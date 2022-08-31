@@ -1,0 +1,13 @@
+services:
+  db:
+    image: mysql:8.0.28
+    environment:
+      - TZ=Asia/Tokyo
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=conifers
+    command: [
+      '--wait_timeout=86400',
+    ]
+    restart: always
+    ports:
+      - "17843:3306"
