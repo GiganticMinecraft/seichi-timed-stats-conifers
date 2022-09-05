@@ -34,9 +34,11 @@ async fn scheduled_snapshots_piping_process() -> JobScheduler {
 
     scheduler
         .add(
-            Job::new_async("0 5 * * * *", |_uuid, _l| Box::pin(async {
-                // TODO: run piping process here
-            }))
+            Job::new_async("0 5 * * * *", |_uuid, _l| {
+                Box::pin(async {
+                    // TODO: run piping process here
+                })
+            })
             .unwrap(),
         )
         .await
