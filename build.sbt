@@ -8,7 +8,8 @@ assemblyJarName := {
   s"${name.value}-${version.value}.jar"
 }
 
-lazy val root = (project in file("."))
-  .settings(
-    name := "SeichiTimedStatsConifers"
-  )
+// scalafixのための設定
+ThisBuild / semanticdbEnabled := true
+ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
+
+lazy val root = (project in file(".")).settings(name := "SeichiTimedStatsConifers")
