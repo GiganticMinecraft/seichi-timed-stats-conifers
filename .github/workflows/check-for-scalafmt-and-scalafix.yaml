@@ -1,9 +1,6 @@
 name: Check for scalafmt and scalafix
 
-on:
-  pull_request:
-    branches:
-      - master
+on: [push]
 
 jobs:
   scalafmt-lint:
