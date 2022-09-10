@@ -6,26 +6,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Cache SBT ivy cache
+      - name: Cache deps
         uses: actions/cache@v3
         with:
-          path: /root/.ivy2/cache
-          key: ${{ runner.os }}-sbt-ivy-cache-${{ github.run_id }}
+          path: |
+            /root/.ivy2/cache
+            /root/.cache/coursier
+            /root/.sbt
+          key: ${{ runner.os }}-scala-cache-${{ github.run_id }}
           restore-keys: |
-            ${{ runner.os }}-sbt-ivy-cache-
-      - name: Cache Coursier cache
-        uses: actions/cache@v3
-        with:
-          path: /root/.cache/coursier
-          key: ${{ runner.os }}-sbt-coursier-cache-${{ github.run_id }}
-          restore-keys: |
-            ${{ runner.os }}-sbt-coursier-cache-
-      - name: Cache SBT
-        uses: actions/cache@v3
-        with:
-          path: /root/.sbt
-          key: ${{ runner.os }}-sbt-cache-${{ github.run_id }}
-          restore-keys: |
-            ${{ runner.os }}-sbt-cache-
+            ${{ runner.os }}-scala-cache-
       - name: build
         run: sbt assembly
