@@ -10,7 +10,6 @@ assemblyJarName := {
 
 // scalafixのための設定
 ThisBuild / semanticdbEnabled := true
-ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
 
 libraryDependencies ++= Seq(
   "org.typelevel" %% "cats-effect" % "3.3.14",
