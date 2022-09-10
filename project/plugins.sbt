@@ -14,3 +14,11 @@ addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "1.2.0")
   Scalafix repository: https://github.com/scalacenter/scalafix
  */
 addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.10.1")
+
+/*
+  Scalafmtプラグインは2022/09/10現在Scala3への対応が試験的なものとなっている。
+  そのため、問題が発生したらScalafmtにPRをなげるなどの「強い意志」を持って利用してください。
+
+  Scalafmt repository: https://github.com/scalameta/scalafmt
+ */
+addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.4.6")
