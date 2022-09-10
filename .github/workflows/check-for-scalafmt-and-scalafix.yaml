@@ -16,5 +16,3 @@ jobs:
     steps:
       - name: execute scalafix lint
         run: sbt "scalafix --check"
-
-
