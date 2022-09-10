@@ -6,10 +6,12 @@ jobs:
   scalafmt-lint:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v3
       - name: execute scalafmt lint
         run: sbt scalafmtCheckAll
   scalafix-lint:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v3
       - name: execute scalafix lint
         run: sbt "scalafix --check"
