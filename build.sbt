@@ -4,16 +4,16 @@ ThisBuild / organization := "click.seichi"
 
 mainClass := Some("click.seichi")
 
+semanticdbEnabled := true
+
 assemblyJarName := {
   s"${name.value}-${version.value}.jar"
 }
-
-// scalafixのための設定
-ThisBuild / semanticdbEnabled := true
 
 libraryDependencies ++= Seq(
   "org.typelevel" %% "cats-effect" % "3.3.14",
   "org.http4s" %% "http4s-dsl" % "0.23.15"
 )
 
-lazy val root = (project in file(".")).settings(name := "SeichiTimedStatsConifers")
+lazy val root = (project in file("."))
+  .settings(name := "SeichiTimedStatsConifers", scalacOptions ++= Seq("-P:semanticdb:text:off"))
