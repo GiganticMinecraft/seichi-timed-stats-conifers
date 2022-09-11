@@ -4,8 +4,6 @@ ThisBuild / organization := "click.seichi"
 
 mainClass := Some("click.seichi")
 
-semanticdbEnabled := true
-
 assemblyJarName := {
   s"${name.value}-${version.value}.jar"
 }
@@ -15,5 +13,11 @@ libraryDependencies ++= Seq(
   "org.http4s" %% "http4s-dsl" % "0.23.15"
 )
 
-lazy val root = (project in file("."))
-  .settings(name := "SeichiTimedStatsConifers", scalacOptions ++= Seq("-P:semanticdb:text:off"))
+lazy val root =
+  (project in file(".")).settings(
+    name := "SeichiTimedStatsConifers",
+    // scalafixがsemanticdbを要求するので設定
+    semanticdbEnabled := true,
+    // これがないと各.classファイルに対してsemanticdbファイルが生成されてしまう
+    semanticdbIncludeInJar := true
+  )
