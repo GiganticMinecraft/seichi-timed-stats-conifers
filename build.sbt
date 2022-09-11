@@ -14,10 +14,4 @@ libraryDependencies ++= Seq(
 )
 
 lazy val root =
-  (project in file(".")).settings(
-    name := "SeichiTimedStatsConifers",
-    // scalafixがsemanticdbを要求するので設定
-    semanticdbEnabled := true,
-    // これがないと各.classファイルに対してsemanticdbファイルが生成されてしまう
-    semanticdbIncludeInJar := true
-  )
+  (project in file(".")).settings(name := "SeichiTimedStatsConifers", semanticdbEnabled := true)
