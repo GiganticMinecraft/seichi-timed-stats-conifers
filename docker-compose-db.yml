@@ -11,3 +11,14 @@ services:
     restart: always
     ports:
       - "17843:3306"
+
+  phpmyadmin:
+    image: phpmyadmin:5.2.0
+    environment:
+      - PMA_HOST=db
+      - PMA_PORT=3306
+      - PMA_USER=root
+      - PMA_PASSWORD=password
+    restart: always
+    ports:
+      - "8080:80"
