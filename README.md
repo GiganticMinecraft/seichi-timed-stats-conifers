@@ -7,3 +7,10 @@
 --- 
 
 整地鯖のプレーヤー統計量を時系列順にトポロジカルソートされた森として記録していくサーバー。
+
+## 開発環境
+
+- [Intellij IDEA](https://www.jetbrains.com/idea/)などの統合開発環境
+- [AdoptOpenJDK 1.8](https://adoptopenjdk.net/?variant=openjdk8&jvmVariant=hotspot)
+- [Scala 3.2.0](https://adoptopenjdk.net/?variant=openjdk8&jvmVariant=hotspot)
+- [sbt 1.7.1](https://www.scala-sbt.org/1.x/docs/Setup.html)
