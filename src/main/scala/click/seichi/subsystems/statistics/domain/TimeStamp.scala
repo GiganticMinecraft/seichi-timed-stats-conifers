@@ -8,7 +8,7 @@ case class TimeStamp(value: LocalDateTime)
 object TimeStamp {
 
   /**
-   * @return yyyy/MM/dd HH:mm:ssの形式でフォーマットされた文字列から[[TimeStamp]]型を生成して返す
+   * @return yyyy/MM/dd HH:mm:ssの形式でフォーマットされた文字列から[[TimeStamp]]を生成して返す
    */
   def fromString(stringDateTime: String): TimeStamp = {
     val dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss")
