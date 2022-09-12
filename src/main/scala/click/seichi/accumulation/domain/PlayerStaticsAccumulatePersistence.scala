@@ -1,4 +1,4 @@
-package click.seichi.subsystems.statistics.accumulation.domain
+package click.seichi.accumulation.domain
 
 trait PlayerStaticsAccumulatePersistence[F[_]] {
 

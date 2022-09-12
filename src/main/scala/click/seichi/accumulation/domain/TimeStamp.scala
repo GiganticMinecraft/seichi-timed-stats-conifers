@@ -1,4 +1,4 @@
-package click.seichi.subsystems.statistics.domain
+package click.seichi.accumulation.domain
 
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
