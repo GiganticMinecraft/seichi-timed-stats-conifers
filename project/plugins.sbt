@@ -22,6 +22,3 @@ addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.10.1")
   Scalafmt repository: https://github.com/scalameta/scalafmt
  */
 addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.4.6")
-
-// flywayを追加するためのプラグイン
-addSbtPlugin("io.github.davidmweber" % "flyway-sbt" % "7.4.0")
