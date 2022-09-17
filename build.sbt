@@ -12,7 +12,8 @@ libraryDependencies ++= Seq(
   "org.typelevel" %% "cats-effect" % "3.3.14",
   "org.http4s" %% "http4s-dsl" % "0.23.15",
   "org.flywaydb" % "flyway-core" % "9.3.0",
-  "org.scalikejdbc" %% "scalikejdbc" % "4.0.0"
+  "org.scalikejdbc" %% "scalikejdbc" % "4.0.0",
+  "com.typesafe" % "config" % "1.4.2"
 )
 
 lazy val root =
