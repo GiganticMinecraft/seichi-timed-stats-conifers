@@ -1,4 +1,4 @@
-package click.seichi.database.domain
+package click.seichi.config.domain
 
 case class DatabaseConnectionInformation(
   host: String,
