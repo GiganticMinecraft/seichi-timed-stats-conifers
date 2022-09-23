@@ -1,7 +1,7 @@
-package click.seichi.config.infrastructure
+package click.seichi.configuration.infrastructure
 
 import cats.effect.Sync
-import click.seichi.config.domain.ConfigLoader
+import click.seichi.configuration.domain.ConfigLoader
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}

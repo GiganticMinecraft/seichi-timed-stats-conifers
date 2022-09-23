@@ -1,4 +1,4 @@
-package click.seichi.config.domain
+package click.seichi.configuration.domain
 
 trait ConfigLoader[F[_], Config] {
 
