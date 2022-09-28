@@ -7,7 +7,7 @@ edition = "2021"
 config = { path = "../config" }
 
 anyhow = "1.0.62"
-tokio = { version = "1.20.1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.21.2", features = ["rt-multi-thread", "macros"] }
 tracing-subscriber = { version = "0.3.15", features = ["env-filter"] }
 tracing = "0.1.36"
 job_scheduler = "1.2.1"
