@@ -9,6 +9,6 @@ config = { path = "../config" }
 anyhow = "1.0.66"
 tokio = { version = "1.21.2", features = ["rt-multi-thread", "macros"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
-tracing = "0.1.36"
+tracing = "0.1.37"
 job_scheduler = "1.2.1"
 tokio-cron-scheduler = "0.8.0"
