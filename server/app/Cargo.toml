@@ -7,8 +7,8 @@ edition = "2021"
 config = { path = "../config" }
 
 anyhow = "1.0.71"
-tokio = { version = "1.28.1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.28.1", features = ["rt-multi-thread", "macros", "signal"] }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 tracing = "0.1.37"
 job_scheduler = "1.2.1"
-tokio-cron-scheduler = "0.8.3"
+tokio-cron-scheduler = "0.9.4"
