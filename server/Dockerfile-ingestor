@@ -20,11 +20,11 @@ ARG PROTOC_NO_VENDOR=true
 ARG PROTOC=/usr/local/bin/protoc
 
 # Build dependencies - this is the caching Docker layer!
-RUN --mount=type=cache,target=/app/server cargo chef cook --release --recipe-path recipe.json
+RUN --mount=type=cache,target=/ingestor/server cargo chef cook --release --recipe-path recipe.json
 
 # Build application
 COPY --link . .
-RUN --mount=type=cache,target=/app/server cargo build --release
+RUN --mount=type=cache,target=/ingestor/server cargo build --release
 
 FROM gcr.io/distroless/cc
 LABEL org.opencontainers.image.source=https://github.com/GiganticMinecraft/seichi-timed-stats-conifers
