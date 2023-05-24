@@ -1,0 +1,12 @@
+[package]
+name = "infra-repository-impl"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.71"
+async-trait = "0.1.68"
+chrono = "0.4.24"
+diesel = { version = "2.0.4", features = ["chrono"] }
+domain = { path = "../../domain" }
+diesel-async = { version = "0.2.2", features = ["mysql", "deadpool"] }

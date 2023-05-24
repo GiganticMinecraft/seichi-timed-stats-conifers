@@ -57,4 +57,7 @@
 diesel migration generate <マイグレーション名>
 ```
 
+マイグレーションをローカル環境で実行したいときは `diesel migration run` を実行してください。
+このコマンドを実行すると、マイグレーションをすべて適用した状態のデータベースから `infra/repository_impl/src/schema.rs` が自動生成されます。
+
 詳細は [Diesel のガイド](https://diesel.rs/guides/getting-started) を参照してください。
