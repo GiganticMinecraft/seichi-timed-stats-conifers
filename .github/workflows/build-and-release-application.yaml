@@ -60,7 +60,7 @@ jobs:
         include:
           - component_name: ingestor
             image_name: ghcr.io/giganticminecraft/seichi-timed-stats-conifers-ingestor
-            dockerfile_relative_to_server: ./Dockerfile-ingestor
+            dockerfile: ./server/Dockerfile-ingestor
 
     name: Build server docker image (and publish on master) for ${{ matrix.component_name }}
     needs: [ lint-and-test ]
