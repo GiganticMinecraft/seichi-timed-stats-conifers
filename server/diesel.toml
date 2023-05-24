@@ -5,4 +5,4 @@
 file = "infra/repository_impl/src/schema.rs"
 
 [migrations_directory]
-dir = "migrations"
+dir = "database/migrations"
