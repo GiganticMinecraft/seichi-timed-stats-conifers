@@ -26,7 +26,7 @@ impl PlayerUuidString {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Player {
     pub uuid: PlayerUuidString,
 }
