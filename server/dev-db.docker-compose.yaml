@@ -1,0 +1,17 @@
+version: "3.9"
+
+# 開発環境で diesel-cli に使ってもらうための DB
+services:
+  db:
+    # プロダクションが利用しているバージョンと合わせるべき
+    # https://github.com/GiganticMinecraft/seichi_infra/blob/8b229bb67976b1698fd20ca5ff16ba1f6f91fecb/seichi-onp-k8s/manifests/seichi-kubernetes/apps/seichi-minecraft/mariadb/mariadb.yaml#LL19C11-L19C18
+    image: mariadb:10.11.3
+    environment:
+      MYSQL_USER: mariadb
+      MYSQL_PASSWORD: password
+      MYSQL_DATABASE: seichi_timed_stats_conifers
+      MYSQL_ROOT_PASSWORD: rootpassword
+    ports:
+      - "3306:3306"
+    volumes:
+      - /var/lib/mysql
