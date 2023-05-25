@@ -1,83 +1,87 @@
-use diesel::{sql_query, ExpressionMethods};
-use diesel_async::pooled_connection::deadpool::{Object, Pool};
+use diesel::sql_query;
+use diesel_async::pooled_connection::deadpool::Pool;
 use diesel_async::{scoped_futures::ScopedFutureExt, RunQueryDsl};
 use diesel_async::{AsyncConnection, AsyncMysqlConnection};
-use domain::{
-    models::{BreakCount, StatsSnapshot},
-    repositories::PlayerTimedStatsRepository,
-};
+use domain::repositories::TimeBasedSnapshotSearchCondition;
+use domain::{models::StatsSnapshot, repositories::PlayerTimedStatsRepository};
 
 mod schema;
+mod stats;
+mod structures;
 
 pub struct DatabaseConnector {
     pool: Pool<AsyncMysqlConnection>,
 }
 
-async fn set_transaction_isolation_level_serializable(
-    conn: &mut Object<AsyncMysqlConnection>,
-) -> Result<usize, diesel::result::Error> {
-    sql_query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
-        .execute(conn)
-        .await
-}
-
-use diesel::query_dsl::methods::*;
+use crate::structures::DiffSequence;
+use stats::HasIncrementalSnapshotTables;
 
 #[async_trait::async_trait]
-impl PlayerTimedStatsRepository<BreakCount> for DatabaseConnector {
-    async fn record_snapshot(&self, snapshot: StatsSnapshot<BreakCount>) -> anyhow::Result<()> {
+impl<Stats: HasIncrementalSnapshotTables + Clone + Send + 'static> PlayerTimedStatsRepository<Stats>
+    for DatabaseConnector
+{
+    async fn record_snapshot(&self, snapshot: StatsSnapshot<Stats>) -> anyhow::Result<()> {
         let mut conn = self.pool.get().await?;
         conn.transaction(|conn| {
             async move {
-                set_transaction_isolation_level_serializable(conn).await?;
-                {
-                    use schema::break_count_full_snapshot_point::dsl::*;
-                    diesel::insert_into(break_count_full_snapshot_point)
-                        .values(record_timestamp.eq(snapshot.utc_timestamp.naive_utc()))
-                        .execute(conn)
+                sql_query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+                    .execute(conn)
+                    .await?;
+
+                let latest_snapshot_point = Stats::find_snapshot_point_with_condition(
+                    TimeBasedSnapshotSearchCondition::NewestBefore(snapshot.utc_timestamp),
+                    conn,
+                )
+                .await?;
+
+                match latest_snapshot_point {
+                    Some(previous_snapshot_point) => {
+                        let diff_sequence = Stats::construct_diff_sequence_leading_up_to(
+                            previous_snapshot_point,
+                            conn,
+                        )
                         .await?;
-                }
-                let inserted_point_id = {
-                    use schema::break_count_full_snapshot_point::dsl::*;
-                    break_count_full_snapshot_point
-                        .select(id)
-                        .order(id.desc())
-                        .first::<u64>(conn)
-                        .await?
-                };
-                {
-                    use schema::break_count_full_snapshot::dsl::*;
-                    for (player, break_count) in snapshot.player_stats.iter() {
-                        diesel::insert_into(break_count_full_snapshot)
-                            .values((
-                                full_snapshot_point_id.eq(inserted_point_id),
-                                player_uuid.eq(player.uuid.as_str()?),
-                                value.eq(break_count.0),
-                            ))
-                            .execute(conn)
-                            .await?;
+
+                        if diff_sequence.is_sufficiently_short_to_extend() {
+                            Stats::create_diff_snapshot_point_on(diff_sequence, snapshot, conn)
+                                .await
+                        } else {
+                            Stats::create_full_snapshot(snapshot, conn).await
+                        }
                     }
+                    None => Stats::create_full_snapshot(snapshot, conn).await,
                 }
-                Ok(())
             }
             .scope_boxed()
         })
         .await
     }
 
-    async fn read_latest_stats_snapshot_before(
+    async fn search_snapshot(
         &self,
-        timestamp: chrono::DateTime<chrono::Utc>,
-        filter: domain::repositories::ReadFilter,
-    ) -> anyhow::Result<Option<StatsSnapshot<BreakCount>>> {
-        todo!()
-    }
+        condition: TimeBasedSnapshotSearchCondition,
+    ) -> anyhow::Result<Option<StatsSnapshot<Stats>>> {
+        let mut conn = self.pool.get().await?;
+        let diff_sequence_upto_latest_snapshot = conn
+            .transaction(|conn| {
+                async move {
+                    let snapshot_point =
+                        Stats::find_snapshot_point_with_condition(condition, conn).await?;
 
-    async fn read_first_stats_snapshot_after(
-        &self,
-        timestamp: chrono::DateTime<chrono::Utc>,
-        filter: domain::repositories::ReadFilter,
-    ) -> anyhow::Result<Option<StatsSnapshot<BreakCount>>> {
-        todo!()
+                    if let Some(snapshot_point) = snapshot_point {
+                        let sequence =
+                            Stats::construct_diff_sequence_leading_up_to(snapshot_point, conn)
+                                .await?;
+
+                        anyhow::Ok(Some(sequence))
+                    } else {
+                        anyhow::Ok(None)
+                    }
+                }
+                .scope_boxed()
+            })
+            .await?;
+
+        Ok(diff_sequence_upto_latest_snapshot.map(DiffSequence::into_snapshot_at_the_end))
     }
 }
