@@ -8,6 +8,7 @@ use domain::{models::StatsSnapshot, repositories::PlayerTimedStatsRepository};
 mod schema;
 mod stats_with_incremental_snapshot_tables;
 mod structures_embedded_in_rdb;
+mod util;
 
 pub struct DatabaseConnector {
     pool: Pool<AsyncMysqlConnection>,
@@ -42,9 +43,8 @@ impl<Stats: HasIncrementalSnapshotTables + Clone + Send + 'static> PlayerTimedSt
                         )
                         .await?;
 
-                        // TODO: create_diff_snapshot_point_on に渡される diff sequence は短いほうが良い(クエリが早いので)
-                        //       その一方、diff は小さければ小さいほど良い (データストレージの観点)。
-                        //       これらの間のバランスをいい感じに取り、 diff_sequence をどこで切るかを決めるべき。
+                        // TODO: create_diff_snapshot_point_on に渡される diff sequence は
+                        //       「復元するために必要な diff の総数が少ない」ように、貪欲に選択すると良い。
                         if diff_sequence.is_sufficiently_short_to_extend() {
                             Stats::create_diff_snapshot_point_on(diff_sequence, snapshot, conn)
                                 .await

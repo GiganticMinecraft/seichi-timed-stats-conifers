@@ -966,6 +966,7 @@ dependencies = [
  "diesel",
  "diesel-async",
  "domain",
+ "futures-util",
 ]
 
 [[package]]

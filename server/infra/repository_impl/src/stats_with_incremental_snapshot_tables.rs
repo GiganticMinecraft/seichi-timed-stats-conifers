@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use crate::schema;
 use crate::structures_embedded_in_rdb::{ComputeDiff, DiffPoint, FullSnapshotPoint, SnapshotDiff};
 use crate::structures_embedded_in_rdb::{DiffSequence, SnapshotPoint};
+use crate::util::RunFirstOptionalDsl;
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use diesel::mysql::Mysql;
 use diesel::query_dsl::methods::*;
@@ -65,6 +66,13 @@ pub trait HasIncrementalSnapshotTables: Sized + Eq + Clone + FromValueColumn {
         time_based_condition: TimeBasedSnapshotSearchCondition,
         conn: &mut Conn,
     ) -> anyhow::Result<Option<SnapshotPoint<Self>>>;
+
+    async fn find_latest_full_snapshot_before<
+        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
+    >(
+        timestamp: DateTime<Utc>,
+        conn: &mut Conn,
+    ) -> anyhow::Result<Option<FullSnapshotPoint<Self>>>;
 
     async fn construct_diff_sequence_leading_up_to_diff_point<
         Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
@@ -355,7 +363,7 @@ impl HasIncrementalSnapshotTables for BreakCount {
         time_based_condition: TimeBasedSnapshotSearchCondition,
         conn: &mut Conn,
     ) -> anyhow::Result<Option<SnapshotPoint<Self>>> {
-        let found_full_snapshot_point: (u64, NaiveDateTime) = {
+        let found_full_snapshot_point: Option<(u64, NaiveDateTime)> = {
             use schema::break_count_full_snapshot_point::dsl::*;
             match time_based_condition {
                 NewestBefore(timestamp) => {
@@ -363,8 +371,7 @@ impl HasIncrementalSnapshotTables for BreakCount {
                         .select((id, record_timestamp))
                         .filter(record_timestamp.le(timestamp.naive_utc()))
                         .order(record_timestamp.desc())
-                        .limit(1)
-                        .first::<(u64, NaiveDateTime)>(conn)
+                        .first_optional::<(u64, NaiveDateTime)>(conn)
                         .await?
                 }
                 OldestAfter(timestamp) => {
@@ -372,14 +379,13 @@ impl HasIncrementalSnapshotTables for BreakCount {
                         .select((id, record_timestamp))
                         .filter(record_timestamp.ge(timestamp.naive_utc()))
                         .order(record_timestamp.asc())
-                        .limit(1)
-                        .first::<(u64, NaiveDateTime)>(conn)
+                        .first_optional::<(u64, NaiveDateTime)>(conn)
                         .await?
                 }
             }
         };
 
-        let found_diff_snapshot_point: (u64, NaiveDateTime) = {
+        let found_diff_snapshot_point: Option<(u64, NaiveDateTime)> = {
             use schema::break_count_diff_point::dsl::*;
             match time_based_condition {
                 NewestBefore(timestamp) => {
@@ -387,8 +393,7 @@ impl HasIncrementalSnapshotTables for BreakCount {
                         .select((id, record_timestamp))
                         .filter(record_timestamp.le(timestamp.naive_utc()))
                         .order(record_timestamp.desc())
-                        .limit(1)
-                        .first::<(u64, NaiveDateTime)>(conn)
+                        .first_optional::<(u64, NaiveDateTime)>(conn)
                         .await?
                 }
                 OldestAfter(timestamp) => {
@@ -396,30 +401,63 @@ impl HasIncrementalSnapshotTables for BreakCount {
                         .select((id, record_timestamp))
                         .filter(record_timestamp.ge(timestamp.naive_utc()))
                         .order(record_timestamp.asc())
-                        .limit(1)
-                        .first::<(u64, NaiveDateTime)>(conn)
+                        .first_optional::<(u64, NaiveDateTime)>(conn)
                         .await?
                 }
             }
         };
 
-        if matches!(time_based_condition, NewestBefore(_))
-            && found_full_snapshot_point.1 > found_diff_snapshot_point.1
-        {
-            // full snapshot point の方を採用する
-            let full_snapshot =
-                Self::read_full_snapshot_point(found_full_snapshot_point.0, conn).await?;
+        match (found_full_snapshot_point, found_diff_snapshot_point) {
+            (None, None) => return Ok(None),
+            (Some((full_id, _)), None) => {
+                // full snapshot point の方を採用する
+                Ok(Some(SnapshotPoint::Full(
+                    Self::read_full_snapshot_point(full_id, conn).await?,
+                )))
+            }
+            (Some((full_id, full_timestamp)), Some((_, diff_timestamp)))
+                if matches!(time_based_condition, NewestBefore(_))
+                    && full_timestamp > diff_timestamp =>
+            {
+                // full snapshot point の方を採用する
+                Ok(Some(SnapshotPoint::Full(
+                    Self::read_full_snapshot_point(full_id, conn).await?,
+                )))
+            }
+            (_, Some((diff_id, _))) => {
+                // 条件に合致する full snapshot point が存在しないか、
+                // diff snapshot point の方が time_based_condition の timestamp に近いため、
+                // diff snapshot point の方を採用する
+                let set_containing_id = std::iter::once(diff_id).collect();
+                let diff_point = Self::read_diff_snapshot_points(set_containing_id, conn)
+                    .await?
+                    .remove(&diff_id)
+                    .unwrap();
 
-            Ok(Some(SnapshotPoint::Full(full_snapshot)))
-        } else {
-            // diff snapshot point の方を採用する
-            let set_containing_id = std::iter::once(found_diff_snapshot_point.0).collect();
-            let diff_point = Self::read_diff_snapshot_points(set_containing_id, conn)
+                Ok(Some(SnapshotPoint::Diff(diff_point)))
+            }
+        }
+    }
+
+    async fn find_latest_full_snapshot_before<
+        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
+    >(
+        timestamp: DateTime<Utc>,
+        conn: &mut Conn,
+    ) -> anyhow::Result<Option<FullSnapshotPoint<Self>>> {
+        if let Some((id, _)) = {
+            use schema::break_count_full_snapshot_point::dsl::*;
+            break_count_full_snapshot_point
+                .select((id, record_timestamp))
+                .filter(record_timestamp.le(timestamp.naive_utc()))
+                .order(record_timestamp.desc())
+                .first_optional::<(u64, NaiveDateTime)>(conn)
                 .await?
-                .remove(&found_diff_snapshot_point.0)
-                .unwrap();
-
-            Ok(Some(SnapshotPoint::Diff(diff_point)))
+        } {
+            let full_snapshot = Self::read_full_snapshot_point(id, conn).await?;
+            Ok(Some(full_snapshot))
+        } else {
+            Ok(None)
         }
     }
 
