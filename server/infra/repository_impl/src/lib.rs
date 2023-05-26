@@ -6,15 +6,15 @@ use domain::repositories::TimeBasedSnapshotSearchCondition;
 use domain::{models::StatsSnapshot, repositories::PlayerTimedStatsRepository};
 
 mod schema;
-mod stats;
-mod structures;
+mod stats_with_incremental_snapshot_tables;
+mod structures_embedded_in_rdb;
 
 pub struct DatabaseConnector {
     pool: Pool<AsyncMysqlConnection>,
 }
 
-use crate::structures::DiffSequence;
-use stats::HasIncrementalSnapshotTables;
+use crate::structures_embedded_in_rdb::DiffSequence;
+use stats_with_incremental_snapshot_tables::HasIncrementalSnapshotTables;
 
 #[async_trait::async_trait]
 impl<Stats: HasIncrementalSnapshotTables + Clone + Send + 'static> PlayerTimedStatsRepository<Stats>
@@ -42,6 +42,9 @@ impl<Stats: HasIncrementalSnapshotTables + Clone + Send + 'static> PlayerTimedSt
                         )
                         .await?;
 
+                        // TODO: create_diff_snapshot_point_on に渡される diff sequence は短いほうが良い(クエリが早いので)
+                        //       その一方、diff は小さければ小さいほど良い (データストレージの観点)。
+                        //       これらの間のバランスをいい感じに取り、 diff_sequence をどこで切るかを決めるべき。
                         if diff_sequence.is_sufficiently_short_to_extend() {
                             Stats::create_diff_snapshot_point_on(diff_sequence, snapshot, conn)
                                 .await

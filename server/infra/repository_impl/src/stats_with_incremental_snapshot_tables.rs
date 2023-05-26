@@ -2,8 +2,8 @@ use anyhow::anyhow;
 use std::collections::{HashMap, HashSet};
 
 use crate::schema;
-use crate::structures::{ComputeDiff, DiffPoint, FullSnapshotPoint, SnapshotDiff};
-use crate::structures::{DiffSequence, SnapshotPoint};
+use crate::structures_embedded_in_rdb::{ComputeDiff, DiffPoint, FullSnapshotPoint, SnapshotDiff};
+use crate::structures_embedded_in_rdb::{DiffSequence, SnapshotPoint};
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use diesel::mysql::Mysql;
 use diesel::query_dsl::methods::*;
@@ -301,8 +301,9 @@ impl HasIncrementalSnapshotTables for BreakCount {
         };
 
         if diff_point_timestamps.len() != diff_snapshot_point_ids.len() {
+            let ids_in_table = diff_point_timestamps.keys().copied().collect();
             let ids_without_timestamp = diff_snapshot_point_ids
-                .difference(&diff_point_timestamps.keys().copied().collect())
+                .difference(&ids_in_table)
                 .collect::<Vec<_>>();
             return Err(anyhow!(
                 "diff point ids {:?} are not found in diff_point table",
@@ -425,9 +426,66 @@ impl HasIncrementalSnapshotTables for BreakCount {
     async fn construct_diff_sequence_leading_up_to_diff_point<
         Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
     >(
-        _diff_point: DiffPoint<Self>,
-        _conn: &mut Conn,
+        diff_point: DiffPoint<Self>,
+        conn: &mut Conn,
     ) -> anyhow::Result<DiffSequence<Self>> {
-        todo!()
+        let root_point_id = {
+            use schema::break_count_diff_point::dsl::*;
+            break_count_diff_point
+                .select(root_full_snapshot_point_id)
+                .filter(id.eq(diff_point.id))
+                .first::<u64>(conn)
+                .await?
+        };
+
+        // diff point `p` の ID から `p.previous_diff_point_id` への `HashMap`。
+        // `filter` の条件と `root_point_id` の定義により、
+        // `diff_point_id` が必ずキー集合に含まれる。
+        let diff_point_id_to_previous_id_map = {
+            use schema::break_count_diff_point::dsl::*;
+            break_count_diff_point
+                .select((id, previous_diff_point_id))
+                .filter(root_full_snapshot_point_id.eq(root_point_id))
+                .filter(record_timestamp.le(diff_point.diff.utc_timestamp.naive_utc()))
+                .load::<(u64, Option<u64>)>(conn)
+                .await?
+                .into_iter()
+                .collect::<HashMap<_, _>>()
+        };
+
+        // `diff_point` に対応する diff point からその root full snapshot point までの
+        // diff point の ID をさかのぼるような `Vec`。
+        let mut ids_of_diff_points_towards_root = vec![diff_point.id];
+        {
+            let mut visited = HashSet::new();
+            visited.insert(diff_point.id);
+
+            let mut current_id = diff_point.id;
+            while let Some(previous_id) = diff_point_id_to_previous_id_map[&current_id] {
+                if visited.contains(&previous_id) {
+                    return Err(anyhow!(
+                        "diff point sequence contains a cycle: {:?}",
+                        ids_of_diff_points_towards_root
+                    ));
+                } else {
+                    visited.insert(previous_id);
+                }
+                ids_of_diff_points_towards_root.push(previous_id);
+                current_id = previous_id;
+            }
+        }
+
+        let mut ordered_diff_points = Vec::new();
+        {
+            let diff_points_ids = ids_of_diff_points_towards_root.iter().copied().collect();
+            let mut diff_points_in_between =
+                Self::read_diff_snapshot_points(diff_points_ids, conn).await?;
+            for id in ids_of_diff_points_towards_root.into_iter().rev() {
+                ordered_diff_points.push(diff_points_in_between.remove(&id).unwrap());
+            }
+        }
+
+        let full_snapshot = Self::read_full_snapshot_point(root_point_id, conn).await?;
+        Ok(DiffSequence::new(full_snapshot, ordered_diff_points))
     }
 }
