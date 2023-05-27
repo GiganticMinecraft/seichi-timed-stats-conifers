@@ -5,6 +5,7 @@ use diesel_async::{AsyncConnection, AsyncMysqlConnection};
 use domain::repositories::TimeBasedSnapshotSearchCondition;
 use domain::{models::StatsSnapshot, repositories::PlayerTimedStatsRepository};
 
+mod cycle_free_path;
 mod query_utils;
 mod schema;
 mod stats_with_incremental_snapshot_tables;
@@ -44,7 +45,7 @@ impl<Stats: HasIncrementalSnapshotTables + Clone + Send + 'static> PlayerTimedSt
                             full_snapshot,
                             diff_points_over_full_snapshot,
                             &snapshot,
-                        );
+                        )?;
 
                     if let DiffSequenceChoice::OptimalAccordingToHeuristics(diff_sequence) =
                         diff_sequence_choice

@@ -84,8 +84,10 @@ impl<Stats: Eq + Clone> ComputeDiff for StatsSnapshot<Stats> {
 #[diesel(sql_type = diesel::sql_types::Unsigned<diesel::sql_types::BigInt>)]
 pub struct DiffPointId(pub u64);
 
+use crate::cycle_free_path::construct_cycle_free_path;
 use diesel::sql_types::BigInt;
 use diesel::sql_types::Unsigned;
+
 impl<B: Backend> ToSql<Unsigned<BigInt>, B> for DiffPointId
 where
     u64: ToSql<Unsigned<BigInt>, B>,
@@ -277,21 +279,11 @@ impl<Stats: Clone> IdIndexedDiffPoints<Stats> {
     fn diff_sequence_towards_latest_diff_point(
         self,
         base_point: FullSnapshotPoint<Stats>,
-    ) -> DiffSequence<Stats> {
-        let latest_diff_point_id = self.latest().unwrap().id;
-
-        let ids_of_diff_points_towards_base_point = {
-            let mut ids = vec![latest_diff_point_id];
-            let mut current_diff_point_ref = self.unsafe_get(latest_diff_point_id);
-
-            // TODO: detect cycles
-            while let Some(previous_diff_point_id) = current_diff_point_ref.previous_diff_point_id {
-                ids.push(previous_diff_point_id);
-                current_diff_point_ref = self.unsafe_get(previous_diff_point_id);
-            }
-
-            ids
-        };
+    ) -> anyhow::Result<DiffSequence<Stats>> {
+        let ids_of_diff_points_towards_base_point =
+            construct_cycle_free_path(self.latest().unwrap().id, |id| {
+                self.unsafe_get(id).previous_diff_point_id
+            })?;
 
         let diff_points_towards_latest_point = {
             let mut ids = ids_of_diff_points_towards_base_point;
@@ -299,7 +291,10 @@ impl<Stats: Clone> IdIndexedDiffPoints<Stats> {
             self.map_ids_to_diff_points(&ids)
         };
 
-        DiffSequence::new(base_point, diff_points_towards_latest_point)
+        Ok(DiffSequence::new(
+            base_point,
+            diff_points_towards_latest_point,
+        ))
     }
 }
 
@@ -307,7 +302,7 @@ pub fn choose_base_diff_sequence_for_snapshot_with_heuristics<Stats: Clone + Eq>
     base_point: FullSnapshotPoint<Stats>,
     all_diff_points_over_base_point: IdIndexedDiffPoints<Stats>,
     snapshot: &StatsSnapshot<Stats>,
-) -> DiffSequenceChoice<Stats> {
+) -> anyhow::Result<DiffSequenceChoice<Stats>> {
     // クエリ速度を最適化する場合、 diff sequence 内のトータルの diff レコード数が最小になるようにすればよい。
     // しかし、ストレージを最小化するには、diff レコード数を少しだけ増やしても sequence を伸ばすべきである。
     //
@@ -330,22 +325,24 @@ pub fn choose_base_diff_sequence_for_snapshot_with_heuristics<Stats: Clone + Eq>
     // TODO: 詳細な実装戦略を書く
 
     if all_diff_points_over_base_point.is_too_large_to_add_another_diff_point() {
-        return DiffSequenceChoice::NoAppropriatePointFound;
+        return Ok(DiffSequenceChoice::NoAppropriatePointFound);
     }
 
     if all_diff_points_over_base_point.is_empty() {
-        return DiffSequenceChoice::NoAppropriatePointFound;
+        return Ok(DiffSequenceChoice::NoAppropriatePointFound);
     }
 
     let optimal_sub_diff_sequence_towards_latest_point =
         choose_sub_diff_sequence_for_snapshot_with_heuristics(
-            all_diff_points_over_base_point.diff_sequence_towards_latest_diff_point(base_point),
+            all_diff_points_over_base_point.diff_sequence_towards_latest_diff_point(base_point)?,
             snapshot,
         );
 
     if optimal_sub_diff_sequence_towards_latest_point.len() > 1000 {
-        return DiffSequenceChoice::NoAppropriatePointFound;
+        return Ok(DiffSequenceChoice::NoAppropriatePointFound);
     }
 
-    DiffSequenceChoice::OptimalAccordingToHeuristics(optimal_sub_diff_sequence_towards_latest_point)
+    Ok(DiffSequenceChoice::OptimalAccordingToHeuristics(
+        optimal_sub_diff_sequence_towards_latest_point,
+    ))
 }

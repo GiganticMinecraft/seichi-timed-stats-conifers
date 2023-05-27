@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use std::collections::{HashMap, HashSet};
-use std::iter;
 
+use crate::cycle_free_path::construct_cycle_free_path;
 use crate::query_utils::RunFirstOptionalDsl;
 use crate::schema;
 use crate::structures_embedded_in_rdb::{
@@ -524,26 +524,10 @@ impl HasIncrementalSnapshotTables for BreakCount {
 
         // `diff_point` に対応する diff point からその root full snapshot point までの
         // diff point の ID をさかのぼるような `Vec`。
-        let mut ids_of_diff_points_towards_root = vec![diff_point.id];
-        {
-            let mut visited = iter::once(diff_point.id).collect::<HashSet<_>>();
+        let ids_of_diff_points_towards_root =
+            construct_cycle_free_path(diff_point.id, |id| diff_point_id_to_previous_id_map[&id])?;
 
-            let mut current_id = diff_point.id;
-            while let Some(previous_id) = diff_point_id_to_previous_id_map[&current_id] {
-                if visited.contains(&previous_id) {
-                    return Err(anyhow!(
-                        "diff point sequence contains a cycle: {:?}",
-                        ids_of_diff_points_towards_root
-                    ));
-                } else {
-                    visited.insert(previous_id);
-                }
-                ids_of_diff_points_towards_root.push(previous_id);
-                current_id = previous_id;
-            }
-        }
-
-        let ordered_diff_points = {
+        let diff_points_towards_given_point = {
             let ids_of_diff_points_towards_tip = {
                 let mut ids = ids_of_diff_points_towards_root;
                 ids.reverse();
@@ -557,6 +541,9 @@ impl HasIncrementalSnapshotTables for BreakCount {
         };
 
         let full_snapshot = Self::read_full_snapshot_point(root_point_id, conn).await?;
-        Ok(DiffSequence::new(full_snapshot, ordered_diff_points))
+        Ok(DiffSequence::new(
+            full_snapshot,
+            diff_points_towards_given_point,
+        ))
     }
 }
