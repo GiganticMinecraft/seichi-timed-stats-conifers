@@ -5,10 +5,10 @@ use diesel_async::{AsyncConnection, AsyncMysqlConnection};
 use domain::repositories::TimeBasedSnapshotSearchCondition;
 use domain::{models::StatsSnapshot, repositories::PlayerTimedStatsRepository};
 
+mod query_utils;
 mod schema;
 mod stats_with_incremental_snapshot_tables;
 mod structures_embedded_in_rdb;
-mod util;
 
 pub struct DatabaseConnector {
     pool: Pool<AsyncMysqlConnection>,

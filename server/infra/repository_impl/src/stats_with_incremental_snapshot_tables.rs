@@ -7,7 +7,7 @@ use crate::structures_embedded_in_rdb::{
     ComputeDiff, DiffPoint, DiffSequence, FullSnapshotPoint, IdIndexedDiffPoints, SnapshotDiff,
     SnapshotPoint,
 };
-use crate::util::RunFirstOptionalDsl;
+use crate::query_utils::RunFirstOptionalDsl;
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use diesel::mysql::Mysql;
 use diesel::query_dsl::methods::*;
