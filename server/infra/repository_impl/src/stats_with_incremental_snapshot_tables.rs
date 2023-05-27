@@ -282,17 +282,16 @@ impl HasIncrementalSnapshotTables for BreakCount {
                 .select((player_uuid, value))
                 .filter(full_snapshot_point_id.eq(full_snapshot_point_id))
                 .load::<(String, u64)>(conn)
-                .await?
-                .into_iter()
-                .map(|(uuid, stats_value)| {
-                    let player = Player {
-                        uuid: PlayerUuidString::from_string(&uuid)?,
-                    };
-                    let stats_value = Self::from_value_column(stats_value);
-                    anyhow::Ok((player, stats_value))
-                })
-                .collect::<Result<HashMap<Player, Self>, _>>()?
-        };
+        }
+        .await?
+        .into_iter()
+        .map(|(uuid, value)| {
+            let player = Player {
+                uuid: PlayerUuidString::from_string(&uuid)?,
+            };
+            anyhow::Ok((player, Self::from_value_column(value)))
+        })
+        .collect::<Result<HashMap<Player, Self>, _>>()?;
 
         Ok(FullSnapshotPoint {
             id: full_snapshot_point_id,
@@ -312,14 +311,14 @@ impl HasIncrementalSnapshotTables for BreakCount {
             break_count_diff_point
                 .select((id, previous_diff_point_id, record_timestamp))
                 .filter(id.eq_any(&diff_snapshot_point_ids))
-                .load::<(DiffPointId, Option<u64>, NaiveDateTime)>(conn)
-                .await?
-                .into_iter()
-                .map(|(id_v, previous_diff_point_id_v, record_timestamp_v)| {
-                    (id_v, (previous_diff_point_id_v, record_timestamp_v))
-                })
-                .collect::<HashMap<_, _>>()
-        };
+                .load::<(DiffPointId, Option<DiffPointId>, NaiveDateTime)>(conn)
+        }
+        .await?
+        .into_iter()
+        .map(|(id, previous_diff_point_id, record_timestamp)| {
+            (id, (previous_diff_point_id, record_timestamp))
+        })
+        .collect::<HashMap<_, _>>();
 
         if diff_point_data_map.len() != diff_snapshot_point_ids.len() {
             let ids_in_table = diff_point_data_map.keys().copied().collect();
@@ -337,19 +336,25 @@ impl HasIncrementalSnapshotTables for BreakCount {
             break_count_diff
                 .select((diff_point_id, player_uuid, new_value))
                 .filter(diff_point_id.eq_any(&diff_snapshot_point_ids))
-                .load::<(u64, String, u64)>(conn)
-                .await?
-        };
+                .load::<(DiffPointId, String, u64)>(conn)
+        }
+        .await?
+        .into_iter()
+        .map(|(point_id, uuid, value)| {
+            anyhow::Ok((
+                point_id,
+                PlayerUuidString::from_string(&uuid)?,
+                Self::from_value_column(value),
+            ))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
         let mut diff_points = HashMap::new();
         for (diff_point_id, uuid, new_value) in diffs {
             diff_points
-                .entry(DiffPointId(diff_point_id))
+                .entry(diff_point_id)
                 .or_insert_with(|| HashMap::new())
-                .insert(
-                    PlayerUuidString::from_string(&uuid)?,
-                    Self::from_value_column(new_value),
-                );
+                .insert(uuid, new_value);
         }
 
         Ok(IdIndexedDiffPoints::new(
@@ -360,7 +365,7 @@ impl HasIncrementalSnapshotTables for BreakCount {
 
                     DiffPoint {
                         id: diff_point_id,
-                        previous_diff_point_id: previous_diff_point_id.map(DiffPointId),
+                        previous_diff_point_id,
                         diff: SnapshotDiff {
                             utc_timestamp: Utc.from_utc_datetime(&timestamp),
                             player_stats_diffs,
@@ -476,13 +481,13 @@ impl HasIncrementalSnapshotTables for BreakCount {
         timestamp: DateTime<Utc>,
         conn: &mut Conn,
     ) -> anyhow::Result<Option<FullSnapshotPoint<Self>>> {
-        if let Some((id, _)) = {
+        if let Some(id) = {
             use schema::break_count_full_snapshot_point::dsl::*;
             break_count_full_snapshot_point
-                .select((id, record_timestamp))
+                .select(id)
                 .filter(record_timestamp.le(timestamp.naive_utc()))
                 .order(record_timestamp.desc())
-                .first_optional::<(u64, NaiveDateTime)>(conn)
+                .first_optional::<u64>(conn)
                 .await?
         } {
             let full_snapshot = Self::read_full_snapshot_point(id, conn).await?;
@@ -517,10 +522,10 @@ impl HasIncrementalSnapshotTables for BreakCount {
                 .filter(root_full_snapshot_point_id.eq(root_point_id))
                 .filter(record_timestamp.le(diff_point.diff.utc_timestamp.naive_utc()))
                 .load::<(DiffPointId, Option<DiffPointId>)>(conn)
-                .await?
-                .into_iter()
-                .collect::<HashMap<_, _>>()
-        };
+        }
+        .await?
+        .into_iter()
+        .collect::<HashMap<_, _>>();
 
         // `diff_point` に対応する diff point からその root full snapshot point までの
         // diff point の ID をさかのぼるような `Vec`。
