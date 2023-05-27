@@ -1,8 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use domain::models::{Player, PlayerUuidString, StatsSnapshot};
+use ordered_float::OrderedFloat;
 
+#[derive(Clone)]
 pub struct FullSnapshotPoint<Stats> {
     pub id: u64,
     pub full_snapshot: StatsSnapshot<Stats>,
@@ -13,10 +15,34 @@ pub struct SnapshotDiff<Stats> {
     pub player_stats_diffs: HashMap<PlayerUuidString, Stats>,
 }
 
+impl<Stats: Clone> SnapshotDiff<Stats> {
+    pub fn apply_to(&self, base_snapshot: StatsSnapshot<Stats>) -> StatsSnapshot<Stats> {
+        let mut base_snapshot = base_snapshot;
+        self.apply_to_mut(&mut base_snapshot);
+
+        StatsSnapshot {
+            utc_timestamp: self.utc_timestamp,
+            player_stats: base_snapshot.player_stats,
+        }
+    }
+
+    pub fn apply_to_mut(&self, base_snapshot: &mut StatsSnapshot<Stats>) {
+        for (player_uuid, diff) in &self.player_stats_diffs {
+            base_snapshot.player_stats.insert(
+                Player {
+                    uuid: player_uuid.clone(),
+                },
+                diff.clone(),
+            );
+        }
+    }
+}
+
 pub trait ComputeDiff {
     type Diff;
 
     fn diff_to(self, other: Self) -> Self::Diff;
+    fn size_of_diff_to(&self, other: &Self) -> usize;
 }
 
 impl<Stats: Eq + Clone> ComputeDiff for StatsSnapshot<Stats> {
@@ -36,10 +62,24 @@ impl<Stats: Eq + Clone> ComputeDiff for StatsSnapshot<Stats> {
             player_stats_diffs,
         }
     }
+
+    fn size_of_diff_to(&self, other: &Self) -> usize {
+        let players = self
+            .player_stats
+            .keys()
+            .chain(other.player_stats.keys())
+            .collect::<HashSet<_>>();
+
+        players
+            .into_iter()
+            .filter(|player| self.player_stats.get(player) != other.player_stats.get(player))
+            .count()
+    }
 }
 
 pub struct DiffPoint<Stats> {
     pub id: u64,
+    pub previous_diff_point_id: Option<u64>,
     pub diff: SnapshotDiff<Stats>,
 }
 
@@ -53,7 +93,7 @@ pub struct DiffSequence<Stats> {
     pub diff_points: Vec<DiffPoint<Stats>>,
 }
 
-impl<Stats> DiffSequence<Stats> {
+impl<Stats: Clone> DiffSequence<Stats> {
     pub fn without_any_diffs(base_point: FullSnapshotPoint<Stats>) -> Self {
         Self {
             base_point,
@@ -68,28 +108,212 @@ impl<Stats> DiffSequence<Stats> {
         }
     }
 
-    pub fn into_snapshot_at_the_end(self) -> StatsSnapshot<Stats> {
-        let end_timestamp = if self.diff_points.is_empty() {
-            self.base_point.full_snapshot.utc_timestamp
+    pub fn into_snapshot_at_the_tip(self) -> StatsSnapshot<Stats> {
+        if self.diff_points.is_empty() {
+            self.base_point.full_snapshot
         } else {
-            self.diff_points.last().unwrap().diff.utc_timestamp
-        };
+            let mut updated_snapshot = self.base_point.full_snapshot;
+            for diff_point in self.diff_points {
+                updated_snapshot = diff_point.diff.apply_to(updated_snapshot);
+            }
+            updated_snapshot
+        }
+    }
 
-        let mut restored_stats = self.base_point.full_snapshot.player_stats;
+    fn len(&self) -> usize {
+        self.diff_points.len() + 1
+    }
+}
 
-        for diff_point in self.diff_points {
-            for (player_uuid, diff) in diff_point.diff.player_stats_diffs {
-                restored_stats.insert(Player { uuid: player_uuid }, diff);
+pub enum DiffSequenceChoice<Stats> {
+    OptimalAccordingToHeuristics(DiffSequence<Stats>),
+    NoAppropriatePointFound,
+}
+
+fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Clone + Eq>(
+    sequence: DiffSequence<Stats>,
+    snapshot: &StatsSnapshot<Stats>,
+) -> DiffSequence<Stats> {
+    fn loss_function(size_at_depth: &DiffSizeAtParticularDepth) -> OrderedFloat<f64> {
+        let depth = size_at_depth.diff_sequence_depth;
+        let total_diffs = size_at_depth.total_diffs_on_current_diff_sequence;
+        let diffs = size_at_depth.diffs_from_tip_to_snapshot;
+
+        OrderedFloat::from(((diffs + 1) as f64) * ((total_diffs + depth + 1) as f64).log(20.0))
+    }
+
+    let base_point = sequence.base_point;
+    let diff_points = sequence.diff_points;
+
+    struct ScanState<Stats> {
+        current_snapshot: StatsSnapshot<Stats>,
+        current_diff_sequence_depth: usize,
+        current_total_diff_size: usize,
+    }
+
+    impl<Stats> ScanState<Stats> {
+        fn new(base_point: FullSnapshotPoint<Stats>) -> Self {
+            Self {
+                current_snapshot: base_point.full_snapshot,
+                current_diff_sequence_depth: 0,
+                current_total_diff_size: 0,
             }
         }
-
-        StatsSnapshot {
-            utc_timestamp: end_timestamp,
-            player_stats: restored_stats,
-        }
     }
 
-    pub fn is_sufficiently_short_to_extend(&self) -> bool {
-        self.diff_points.len() <= 1000
+    struct DiffSizeAtParticularDepth {
+        diff_sequence_depth: usize,
+        total_diffs_on_current_diff_sequence: usize,
+        diffs_from_tip_to_snapshot: usize,
     }
+
+    let virtual_diff_at_base = SnapshotDiff {
+        utc_timestamp: base_point.full_snapshot.utc_timestamp,
+        player_stats_diffs: HashMap::new(),
+    };
+
+    let optimal_depth_size_pair = std::iter::once(&virtual_diff_at_base)
+        .chain(diff_points.iter().map(|diff_point| &diff_point.diff))
+        .scan(ScanState::new(base_point.clone()), |state, diff| {
+            diff.apply_to_mut(&mut state.current_snapshot);
+            state.current_diff_sequence_depth += 1;
+            state.current_total_diff_size += diff.player_stats_diffs.len();
+
+            Some(DiffSizeAtParticularDepth {
+                diff_sequence_depth: state.current_diff_sequence_depth,
+                total_diffs_on_current_diff_sequence: state.current_total_diff_size,
+                diffs_from_tip_to_snapshot: state.current_snapshot.size_of_diff_to(&snapshot),
+            })
+        })
+        .min_by_key(loss_function)
+        .unwrap();
+
+    DiffSequence {
+        base_point,
+        diff_points: diff_points
+            .into_iter()
+            .take(optimal_depth_size_pair.diff_sequence_depth)
+            .collect(),
+    }
+}
+
+pub struct IdIndexedDiffPoints<Stats>(HashMap<u64, DiffPoint<Stats>>);
+
+impl<Stats: Clone> IdIndexedDiffPoints<Stats> {
+    pub fn new(diff_points: Vec<DiffPoint<Stats>>) -> Self {
+        Self(
+            diff_points
+                .into_iter()
+                .map(|diff_point| (diff_point.id, diff_point))
+                .collect(),
+        )
+    }
+
+    fn is_too_large_to_add_another_diff_point(&self) -> bool {
+        self.0.len() >= 1000
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    fn latest(&self) -> Option<&DiffPoint<Stats>> {
+        self.0.values().max_by_key(|diff_point| diff_point.id)
+    }
+
+    fn unsafe_get(&self, id: u64) -> &DiffPoint<Stats> {
+        self.0.get(&id).unwrap()
+    }
+
+    pub fn remove(&mut self, id: &u64) -> Option<DiffPoint<Stats>> {
+        self.0.remove(id)
+    }
+
+    pub fn points_before(self, timestamp: DateTime<Utc>) -> Self {
+        Self(
+            self.0
+                .into_iter()
+                .filter(|(_, diff_point)| diff_point.diff.utc_timestamp < timestamp)
+                .collect(),
+        )
+    }
+
+    pub fn map_ids_to_diff_points(mut self, ids: &[u64]) -> Vec<DiffPoint<Stats>> {
+        ids.iter().map(|id| self.0.remove(&id).unwrap()).collect()
+    }
+
+    fn diff_sequence_towards_latest_diff_point(
+        self,
+        base_point: FullSnapshotPoint<Stats>,
+    ) -> DiffSequence<Stats> {
+        let latest_diff_point_id = self.latest().unwrap().id;
+
+        let ids_of_diff_points_towards_base_point = {
+            let mut ids = vec![latest_diff_point_id];
+            let mut current_diff_point_ref = self.unsafe_get(latest_diff_point_id);
+
+            // TODO: detect cycles
+            while let Some(previous_diff_point_id) = current_diff_point_ref.previous_diff_point_id {
+                ids.push(previous_diff_point_id);
+                current_diff_point_ref = self.unsafe_get(previous_diff_point_id);
+            }
+
+            ids
+        };
+
+        let diff_points_towards_latest_point = {
+            let mut ids = ids_of_diff_points_towards_base_point;
+            ids.reverse();
+            self.map_ids_to_diff_points(&ids)
+        };
+
+        DiffSequence::new(base_point, diff_points_towards_latest_point)
+    }
+}
+
+pub fn choose_base_diff_sequence_for_snapshot_with_heuristics<Stats: Clone + Eq>(
+    base_point: FullSnapshotPoint<Stats>,
+    all_diff_points_over_base_point: IdIndexedDiffPoints<Stats>,
+    snapshot: &StatsSnapshot<Stats>,
+) -> DiffSequenceChoice<Stats> {
+    // クエリ速度を最適化する場合、 diff sequence 内のトータルの diff レコード数が最小になるようにすればよい。
+    // しかし、ストレージを最小化するには、diff レコード数を少しだけ増やしても sequence を伸ばすべきである。
+    //
+    // 例えば、初期の full snapshot が `F = { a: 1, b: 1, c: 1 }` であり、
+    // `F` の後続の diff point として `D = { a: 2, b: 2 }` があるとする。
+    // ここで、 `snapshot = { a: 3, b: 2, c: 1 }` の base diff sequence を選択する場合、
+    //  - diff sequence 上のレコード数を最小化すると `[F]` が、
+    //  - 追加する diff レコードが最小になるようにすると、 `[F, D]` が
+    // 選択される。というのも、`snapshot` までの diff sequence は
+    //  - `[F]` を base diff sequence とした時、 `[F, { a: 3, b: 2 }]` であり、
+    //    この diff sequence 内の diff レコード数は 2、追加する diff レコード数は 2 である一方、
+    //  - `[F, D]` を base diff sequence とした時、 `[F, D, { a: 3 }]` であり、
+    //    この diff sequence 内の diff レコード数は 3、追加する diff レコード数は 1 であるためである。
+    //
+    // このように、一般には diff sequence の小ささと追加する diff の小ささはトレードオフの関係にある。
+    // 当アプリケーションは read-intensive ではないためストレージの最小化の方を優先するが、
+    // かといって diff sequence の大きさで full snapshot の頻度を決定するため、
+    // diff sequence の大きさを無視するわけにもいかない。
+    //
+    // TODO: 詳細な実装戦略を書く
+
+    if all_diff_points_over_base_point.is_too_large_to_add_another_diff_point() {
+        return DiffSequenceChoice::NoAppropriatePointFound;
+    }
+
+    if all_diff_points_over_base_point.is_empty() {
+        return DiffSequenceChoice::NoAppropriatePointFound;
+    }
+
+    let optimal_sub_diff_sequence_towards_latest_point =
+        choose_sub_diff_sequence_for_snapshot_with_heuristics(
+            all_diff_points_over_base_point.diff_sequence_towards_latest_diff_point(base_point),
+            snapshot,
+        );
+
+    if optimal_sub_diff_sequence_towards_latest_point.len() > 1000 {
+        return DiffSequenceChoice::NoAppropriatePointFound;
+    }
+
+    DiffSequenceChoice::OptimalAccordingToHeuristics(optimal_sub_diff_sequence_towards_latest_point)
 }

@@ -14,7 +14,9 @@ pub struct DatabaseConnector {
     pool: Pool<AsyncMysqlConnection>,
 }
 
-use crate::structures_embedded_in_rdb::DiffSequence;
+use crate::structures_embedded_in_rdb::{
+    choose_base_diff_sequence_for_snapshot_with_heuristics, DiffSequence, DiffSequenceChoice,
+};
 use stats_with_incremental_snapshot_tables::HasIncrementalSnapshotTables;
 
 #[async_trait::async_trait]
@@ -29,30 +31,30 @@ impl<Stats: HasIncrementalSnapshotTables + Clone + Send + 'static> PlayerTimedSt
                     .execute(conn)
                     .await?;
 
-                let latest_snapshot_point = Stats::find_snapshot_point_with_condition(
-                    TimeBasedSnapshotSearchCondition::NewestBefore(snapshot.utc_timestamp),
-                    conn,
-                )
-                .await?;
+                if let Some(full_snapshot) =
+                    Stats::find_latest_full_snapshot_before(snapshot.utc_timestamp, conn).await?
+                {
+                    let diff_points_over_full_snapshot =
+                        Stats::read_diff_snapshot_points_over_full_point(full_snapshot.id, conn)
+                            .await?
+                            .points_before(snapshot.utc_timestamp);
 
-                match latest_snapshot_point {
-                    Some(previous_snapshot_point) => {
-                        let diff_sequence = Stats::construct_diff_sequence_leading_up_to(
-                            previous_snapshot_point,
-                            conn,
-                        )
-                        .await?;
+                    let diff_sequence_choice =
+                        choose_base_diff_sequence_for_snapshot_with_heuristics(
+                            full_snapshot,
+                            diff_points_over_full_snapshot,
+                            &snapshot,
+                        );
 
-                        // TODO: create_diff_snapshot_point_on に渡される diff sequence は
-                        //       「復元するために必要な diff の総数が少ない」ように、貪欲に選択すると良い。
-                        if diff_sequence.is_sufficiently_short_to_extend() {
-                            Stats::create_diff_snapshot_point_on(diff_sequence, snapshot, conn)
-                                .await
-                        } else {
-                            Stats::create_full_snapshot(snapshot, conn).await
-                        }
+                    if let DiffSequenceChoice::OptimalAccordingToHeuristics(diff_sequence) =
+                        diff_sequence_choice
+                    {
+                        Stats::create_diff_snapshot_point_on(diff_sequence, snapshot, conn).await
+                    } else {
+                        Stats::create_full_snapshot(snapshot, conn).await
                     }
-                    None => Stats::create_full_snapshot(snapshot, conn).await,
+                } else {
+                    Stats::create_full_snapshot(snapshot, conn).await
                 }
             }
             .scope_boxed()
@@ -85,6 +87,6 @@ impl<Stats: HasIncrementalSnapshotTables + Clone + Send + 'static> PlayerTimedSt
             })
             .await?;
 
-        Ok(diff_sequence_upto_latest_snapshot.map(DiffSequence::into_snapshot_at_the_end))
+        Ok(diff_sequence_upto_latest_snapshot.map(DiffSequence::into_snapshot_at_the_tip))
     }
 }

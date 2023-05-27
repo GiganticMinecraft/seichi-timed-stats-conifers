@@ -1,9 +1,12 @@
 use anyhow::anyhow;
 use std::collections::{HashMap, HashSet};
+use std::iter;
 
 use crate::schema;
-use crate::structures_embedded_in_rdb::{ComputeDiff, DiffPoint, FullSnapshotPoint, SnapshotDiff};
-use crate::structures_embedded_in_rdb::{DiffSequence, SnapshotPoint};
+use crate::structures_embedded_in_rdb::{
+    ComputeDiff, DiffPoint, DiffSequence, FullSnapshotPoint, IdIndexedDiffPoints, SnapshotDiff,
+    SnapshotPoint,
+};
 use crate::util::RunFirstOptionalDsl;
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use diesel::mysql::Mysql;
@@ -58,7 +61,14 @@ pub trait HasIncrementalSnapshotTables: Sized + Eq + Clone + FromValueColumn {
     async fn read_diff_snapshot_points<Conn: AsyncConnection<Backend = Mysql> + Send + 'static>(
         diff_snapshot_point_ids: HashSet<u64>,
         conn: &mut Conn,
-    ) -> anyhow::Result<HashMap<u64, DiffPoint<Self>>>;
+    ) -> anyhow::Result<IdIndexedDiffPoints<Self>>;
+
+    async fn read_diff_snapshot_points_over_full_point<
+        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
+    >(
+        full_snapshot_point_id: u64,
+        conn: &mut Conn,
+    ) -> anyhow::Result<IdIndexedDiffPoints<Self>>;
 
     async fn find_snapshot_point_with_condition<
         Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
@@ -104,7 +114,7 @@ pub trait HasIncrementalSnapshotTables: Sized + Eq + Clone + FromValueColumn {
     ) -> anyhow::Result<()> {
         let root_point_id = diff_sequence.base_point.id;
         let previous_point_id = diff_sequence.diff_points.last().map(|p| p.id);
-        let diff = diff_sequence.into_snapshot_at_the_end().diff_to(snapshot);
+        let diff = diff_sequence.into_snapshot_at_the_tip().diff_to(snapshot);
 
         let inserted_diff_point_id = Self::create_diff_snapshot_point(
             root_point_id,
@@ -296,20 +306,23 @@ impl HasIncrementalSnapshotTables for BreakCount {
     async fn read_diff_snapshot_points<Conn: AsyncConnection<Backend = Mysql> + Send + 'static>(
         diff_snapshot_point_ids: HashSet<u64>,
         conn: &mut Conn,
-    ) -> anyhow::Result<HashMap<u64, DiffPoint<Self>>> {
-        let diff_point_timestamps = {
+    ) -> anyhow::Result<IdIndexedDiffPoints<Self>> {
+        let diff_point_data_map = {
             use schema::break_count_diff_point::dsl::*;
             break_count_diff_point
-                .select((id, record_timestamp))
+                .select((id, previous_diff_point_id, record_timestamp))
                 .filter(id.eq_any(&diff_snapshot_point_ids))
-                .load::<(u64, NaiveDateTime)>(conn)
+                .load::<(u64, Option<u64>, NaiveDateTime)>(conn)
                 .await?
                 .into_iter()
+                .map(|(id_v, previous_diff_point_id_v, record_timestamp_v)| {
+                    (id_v, (previous_diff_point_id_v, record_timestamp_v))
+                })
                 .collect::<HashMap<_, _>>()
         };
 
-        if diff_point_timestamps.len() != diff_snapshot_point_ids.len() {
-            let ids_in_table = diff_point_timestamps.keys().copied().collect();
+        if diff_point_data_map.len() != diff_snapshot_point_ids.len() {
+            let ids_in_table = diff_point_data_map.keys().copied().collect();
             let ids_without_timestamp = diff_snapshot_point_ids
                 .difference(&ids_in_table)
                 .collect::<Vec<_>>();
@@ -339,22 +352,40 @@ impl HasIncrementalSnapshotTables for BreakCount {
                 );
         }
 
-        Ok(diff_points
-            .into_iter()
-            .map(|(diff_point_id, player_stats_diffs)| {
-                let timestamp = diff_point_timestamps[&diff_point_id];
-                (
-                    diff_point_id,
+        Ok(IdIndexedDiffPoints::new(
+            diff_points
+                .into_iter()
+                .map(|(diff_point_id, player_stats_diffs)| {
+                    let (previous_diff_point_id, timestamp) = diff_point_data_map[&diff_point_id];
+
                     DiffPoint {
                         id: diff_point_id,
+                        previous_diff_point_id,
                         diff: SnapshotDiff {
                             utc_timestamp: Utc.from_utc_datetime(&timestamp),
                             player_stats_diffs,
                         },
-                    },
-                )
-            })
-            .collect())
+                    }
+                })
+                .collect(),
+        ))
+    }
+
+    async fn read_diff_snapshot_points_over_full_point<
+        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
+    >(
+        full_snapshot_point_id: u64,
+        conn: &mut Conn,
+    ) -> anyhow::Result<IdIndexedDiffPoints<Self>> {
+        use schema::break_count_diff_point::dsl::*;
+
+        let diff_point_ids = break_count_diff_point
+            .select(id)
+            .filter(root_full_snapshot_point_id.eq(full_snapshot_point_id))
+            .load::<u64>(conn)
+            .await?;
+
+        Ok(Self::read_diff_snapshot_points(diff_point_ids.into_iter().collect(), conn).await?)
     }
 
     async fn find_snapshot_point_with_condition<
@@ -428,11 +459,11 @@ impl HasIncrementalSnapshotTables for BreakCount {
                 // 条件に合致する full snapshot point が存在しないか、
                 // diff snapshot point の方が time_based_condition の timestamp に近いため、
                 // diff snapshot point の方を採用する
-                let set_containing_id = std::iter::once(diff_id).collect();
-                let diff_point = Self::read_diff_snapshot_points(set_containing_id, conn)
-                    .await?
-                    .remove(&diff_id)
-                    .unwrap();
+                let diff_point =
+                    Self::read_diff_snapshot_points(vec![diff_id].into_iter().collect(), conn)
+                        .await?
+                        .remove(&diff_id)
+                        .unwrap();
 
                 Ok(Some(SnapshotPoint::Diff(diff_point)))
             }
@@ -495,8 +526,7 @@ impl HasIncrementalSnapshotTables for BreakCount {
         // diff point の ID をさかのぼるような `Vec`。
         let mut ids_of_diff_points_towards_root = vec![diff_point.id];
         {
-            let mut visited = HashSet::new();
-            visited.insert(diff_point.id);
+            let mut visited = iter::once(diff_point.id).collect::<HashSet<_>>();
 
             let mut current_id = diff_point.id;
             while let Some(previous_id) = diff_point_id_to_previous_id_map[&current_id] {
@@ -513,15 +543,18 @@ impl HasIncrementalSnapshotTables for BreakCount {
             }
         }
 
-        let mut ordered_diff_points = Vec::new();
-        {
-            let diff_points_ids = ids_of_diff_points_towards_root.iter().copied().collect();
-            let mut diff_points_in_between =
-                Self::read_diff_snapshot_points(diff_points_ids, conn).await?;
-            for id in ids_of_diff_points_towards_root.into_iter().rev() {
-                ordered_diff_points.push(diff_points_in_between.remove(&id).unwrap());
-            }
-        }
+        let ordered_diff_points = {
+            let ids_of_diff_points_towards_tip = {
+                let mut ids = ids_of_diff_points_towards_root;
+                ids.reverse();
+                ids
+            };
+
+            let ids_set = ids_of_diff_points_towards_tip.iter().copied().collect();
+            Self::read_diff_snapshot_points(ids_set, conn)
+                .await?
+                .map_ids_to_diff_points(&ids_of_diff_points_towards_tip)
+        };
 
         let full_snapshot = Self::read_full_snapshot_point(root_point_id, conn).await?;
         Ok(DiffSequence::new(full_snapshot, ordered_diff_points))
