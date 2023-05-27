@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
+use diesel::backend::{Backend, RawValue};
+use diesel::deserialize::FromSql;
+use diesel::serialize::ToSql;
 use domain::models::{Player, PlayerUuidString, StatsSnapshot};
 use ordered_float::OrderedFloat;
 
@@ -77,9 +80,36 @@ impl<Stats: Eq + Clone> ComputeDiff for StatsSnapshot<Stats> {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, diesel::AsExpression, diesel::FromSqlRow, Debug)]
+#[diesel(sql_type = diesel::sql_types::Unsigned<diesel::sql_types::BigInt>)]
+pub struct DiffPointId(pub u64);
+
+use diesel::sql_types::BigInt;
+use diesel::sql_types::Unsigned;
+impl<B: Backend> ToSql<Unsigned<BigInt>, B> for DiffPointId
+where
+    u64: ToSql<Unsigned<BigInt>, B>,
+{
+    fn to_sql<'b>(
+        &'b self,
+        out: &mut diesel::serialize::Output<'b, '_, B>,
+    ) -> diesel::serialize::Result {
+        ToSql::<Unsigned<BigInt>, B>::to_sql(&self.0, out)
+    }
+}
+
+impl<B: Backend> FromSql<Unsigned<BigInt>, B> for DiffPointId
+where
+    u64: FromSql<Unsigned<BigInt>, B>,
+{
+    fn from_sql(bytes: RawValue<'_, B>) -> diesel::deserialize::Result<Self> {
+        <u64 as FromSql<Unsigned<BigInt>, B>>::from_sql(bytes).map(DiffPointId)
+    }
+}
+
 pub struct DiffPoint<Stats> {
-    pub id: u64,
-    pub previous_diff_point_id: Option<u64>,
+    pub id: DiffPointId,
+    pub previous_diff_point_id: Option<DiffPointId>,
     pub diff: SnapshotDiff<Stats>,
 }
 
@@ -197,7 +227,7 @@ fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Clone + Eq>(
     }
 }
 
-pub struct IdIndexedDiffPoints<Stats>(HashMap<u64, DiffPoint<Stats>>);
+pub struct IdIndexedDiffPoints<Stats>(HashMap<DiffPointId, DiffPoint<Stats>>);
 
 impl<Stats: Clone> IdIndexedDiffPoints<Stats> {
     pub fn new(diff_points: Vec<DiffPoint<Stats>>) -> Self {
@@ -218,14 +248,16 @@ impl<Stats: Clone> IdIndexedDiffPoints<Stats> {
     }
 
     fn latest(&self) -> Option<&DiffPoint<Stats>> {
-        self.0.values().max_by_key(|diff_point| diff_point.id)
+        self.0
+            .values()
+            .max_by_key(|diff_point| diff_point.diff.utc_timestamp)
     }
 
-    fn unsafe_get(&self, id: u64) -> &DiffPoint<Stats> {
+    fn unsafe_get(&self, id: DiffPointId) -> &DiffPoint<Stats> {
         self.0.get(&id).unwrap()
     }
 
-    pub fn remove(&mut self, id: &u64) -> Option<DiffPoint<Stats>> {
+    pub fn remove(&mut self, id: &DiffPointId) -> Option<DiffPoint<Stats>> {
         self.0.remove(id)
     }
 
@@ -238,7 +270,7 @@ impl<Stats: Clone> IdIndexedDiffPoints<Stats> {
         )
     }
 
-    pub fn map_ids_to_diff_points(mut self, ids: &[u64]) -> Vec<DiffPoint<Stats>> {
+    pub fn map_ids_to_diff_points(mut self, ids: &[DiffPointId]) -> Vec<DiffPoint<Stats>> {
         ids.iter().map(|id| self.0.remove(&id).unwrap()).collect()
     }
 
