@@ -1,5 +1,5 @@
 [package]
-name = "infra-repository-impl"
+name = "infra-db-repository-impl"
 version = "0.1.0"
 edition = "2021"
 
@@ -12,3 +12,6 @@ domain = { path = "../../domain" }
 diesel-async = { version = "0.2.2", features = ["mysql", "deadpool"] }
 futures-util = "0.3.28"
 ordered-float = "3.7.0"
+tracing = "0.1.37"
+serde = "1.0.163"
+envy = "0.4.2"

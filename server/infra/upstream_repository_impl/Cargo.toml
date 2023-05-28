@@ -1,5 +1,5 @@
 [package]
-name = "upstream-repository-impl"
+name = "infra-upstream-repository-impl"
 version = "0.1.0"
 edition = "2021"
 

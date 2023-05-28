@@ -2,11 +2,47 @@
 #![warn(clippy::nursery, clippy::pedantic)]
 #![allow(clippy::cargo_common_metadata)]
 
-use config::{AppConfig, FromEnv};
-use tokio::signal::unix::{signal, SignalKind};
-use tokio_cron_scheduler::{Job, JobScheduler};
+use domain::models::{BreakCount, BuildCount, PlayTicks, VoteCount};
+use domain::repositories::{PlayerStatsRepository, PlayerTimedStatsRepository};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+
+async fn stats_repository_impl() -> anyhow::Result<
+    impl PlayerStatsRepository<BreakCount>
+        + PlayerStatsRepository<BuildCount>
+        + PlayerStatsRepository<PlayTicks>
+        + PlayerStatsRepository<VoteCount>,
+> {
+    use infra_upstream_repository_impl::{config::GrpcClient, GrpcUpstreamRepository};
+    Ok(GrpcUpstreamRepository::try_new(GrpcClient::from_env()?).await?)
+}
+
+async fn timed_stats_repository_impl() -> anyhow::Result<
+    impl PlayerTimedStatsRepository<BreakCount>
+        + PlayerTimedStatsRepository<BuildCount>
+        + PlayerTimedStatsRepository<PlayTicks>
+        + PlayerTimedStatsRepository<VoteCount>,
+> {
+    use infra_db_repository_impl::{config::Database, DatabaseConnector};
+    Ok(DatabaseConnector::try_new(Database::from_env()?).await?)
+}
+
+async fn fetch_and_record<Stats>(
+    stats_repository: &impl PlayerStatsRepository<Stats>,
+    timed_stats_repository: &impl PlayerTimedStatsRepository<Stats>,
+) -> anyhow::Result<()>
+where
+    Stats: Send + 'static,
+{
+    timed_stats_repository
+        .record_snapshot(
+            stats_repository
+                .fetch_stats_snapshot_of_all_players()
+                .await?,
+        )
+        .await?;
+    Ok(())
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,34 +55,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    println!("Reading config...");
-    let _config = AppConfig::from_env()?;
+    let stats_repository = stats_repository_impl().await?;
+    let timed_stats_repository = timed_stats_repository_impl().await?;
 
-    // begin piping process in background
-    let scheduler = scheduled_snapshots_piping_process().await;
-    scheduler.start().await.unwrap();
-
-    // wait for SIGTERM
-    let mut signal_stream = signal(SignalKind::terminate())?;
-    signal_stream.recv().await;
+    fetch_and_record::<BreakCount>(&stats_repository, &timed_stats_repository).await?;
+    fetch_and_record::<BuildCount>(&stats_repository, &timed_stats_repository).await?;
+    fetch_and_record::<PlayTicks>(&stats_repository, &timed_stats_repository).await?;
+    fetch_and_record::<VoteCount>(&stats_repository, &timed_stats_repository).await?;
 
     Ok(())
-}
-
-async fn scheduled_snapshots_piping_process() -> JobScheduler {
-    let scheduler = JobScheduler::new().await.unwrap();
-
-    scheduler
-        .add(
-            Job::new_async("0 5 * * * *", |_uuid, _l| {
-                Box::pin(async {
-                    // TODO: run piping process here
-                })
-            })
-            .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    scheduler
 }

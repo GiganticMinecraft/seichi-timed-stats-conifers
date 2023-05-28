@@ -22,7 +22,7 @@ pub mod config {
     #[derive(Debug, serde::Deserialize, Clone)]
     pub struct Database {
         pub db_connection_url: String,
-        pub db_connection_pool_size: u32,
+        pub db_connection_pool_size: usize,
     }
 
     impl Database {
@@ -38,10 +38,10 @@ pub struct DatabaseConnector {
 
 impl DatabaseConnector {
     pub async fn try_new(config: config::Database) -> anyhow::Result<Self> {
-        let config =
+        let connection_manager =
             AsyncDieselConnectionManager::<AsyncMysqlConnection>::new(config.db_connection_url);
 
-        let pool = Pool::builder()
+        let pool = Pool::builder(connection_manager)
             .max_size(config.db_connection_pool_size)
             .build()?;
 
