@@ -277,6 +277,10 @@ impl<Stats: Clone> IdIndexedDiffPoints<Stats> {
         )
     }
 
+    pub fn remove(&mut self, id: &DiffPointId) -> Option<DiffPoint<Stats>> {
+        self.0.remove(id)
+    }
+
     pub fn map_ids_to_diff_points(mut self, ids: &[DiffPointId]) -> Vec<DiffPoint<Stats>> {
         ids.iter().map(|id| self.0.remove(&id).unwrap()).collect()
     }
@@ -337,7 +341,7 @@ pub fn choose_base_diff_sequence_for_snapshot_with_heuristics<Stats: Clone + Eq>
     // 祖先のうち、最も損失が小さいものを基底の diff point とすることとした。
 
     {
-        let diff_points_count = all_diff_points_over_base_point.len();
+        let diff_points_count = all_diff_points_over_base_point.size();
 
         // diff point が存在しない場合は full snapshot 上に diff point を作成すればよい。
         if diff_points_count == 0 {
