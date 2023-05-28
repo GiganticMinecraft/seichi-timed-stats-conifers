@@ -2,18 +2,12 @@ use anyhow::anyhow;
 use std::collections::{HashMap, HashSet};
 
 use crate::cycle_free_path::construct_cycle_free_path;
-use crate::query_utils::RunFirstOptionalDsl;
-use crate::schema;
 use crate::structures_embedded_in_rdb::{
     ComputeDiff, DiffPoint, DiffPointId, DiffSequence, FullSnapshotPoint, IdIndexedDiffPoints,
     SnapshotDiff, SnapshotPoint,
 };
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
-use diesel::mysql::Mysql;
-use diesel::query_dsl::methods::*;
-use diesel::ExpressionMethods;
 use diesel_async::AsyncConnection;
-use diesel_async::RunQueryDsl;
 
 use domain::models::{BreakCount, Player, PlayerUuidString, StatsSnapshot};
 use domain::repositories::TimeBasedSnapshotSearchCondition;
@@ -25,82 +19,64 @@ pub trait FromValueColumn {
 }
 
 #[async_trait::async_trait]
-pub trait HasIncrementalSnapshotTables: Sized + Eq + Clone + FromValueColumn {
-    async fn create_full_snapshot_point<Conn: AsyncConnection<Backend = Mysql> + Send + 'static>(
-        conn: &mut Conn,
-    ) -> anyhow::Result<u64>;
+pub trait HasIncrementalSnapshotTables<Conn>: Sized + Eq + Clone + FromValueColumn {
+    async fn create_full_snapshot_point(conn: &mut Conn) -> anyhow::Result<u64>;
 
-    async fn insert_all_stats_at_full_snapshot_point<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn insert_all_stats_at_full_snapshot_point(
         fresh_full_snapshot_point_id: u64,
         player_stats: HashMap<Player, Self>,
         conn: &mut Conn,
     ) -> anyhow::Result<()>;
 
-    async fn create_diff_snapshot_point<Conn: AsyncConnection<Backend = Mysql> + Send + 'static>(
+    async fn create_diff_snapshot_point(
         base_point_id: u64,
         previous_diff_point_id_: Option<DiffPointId>,
         timestamp: DateTime<Utc>,
         conn: &mut Conn,
     ) -> anyhow::Result<DiffPointId>;
 
-    async fn insert_all_stats_at_diff_snapshot_point<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn insert_all_stats_at_diff_snapshot_point(
         fresh_diff_snapshot_point_id: DiffPointId,
         player_stats_diffs: HashMap<PlayerUuidString, Self>,
         conn: &mut Conn,
     ) -> anyhow::Result<()>;
 
-    async fn read_full_snapshot_point<Conn: AsyncConnection<Backend = Mysql> + Send + 'static>(
+    async fn read_full_snapshot_point(
         full_snapshot_point_id: u64,
         conn: &mut Conn,
     ) -> anyhow::Result<FullSnapshotPoint<Self>>;
 
-    async fn read_diff_snapshot_points<Conn: AsyncConnection<Backend = Mysql> + Send + 'static>(
+    async fn read_diff_snapshot_points(
         diff_snapshot_point_ids: HashSet<DiffPointId>,
         conn: &mut Conn,
     ) -> anyhow::Result<IdIndexedDiffPoints<Self>>;
 
-    async fn read_diff_snapshot_points_over_full_point<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn read_diff_snapshot_points_over_full_point(
         full_snapshot_point_id: u64,
         conn: &mut Conn,
     ) -> anyhow::Result<IdIndexedDiffPoints<Self>>;
 
-    async fn find_id_and_timestamp_of_full_snapshot_point_with_condition<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn find_id_and_timestamp_of_full_snapshot_point_with_condition(
         time_based_condition: TimeBasedSnapshotSearchCondition,
         conn: &mut Conn,
     ) -> anyhow::Result<Option<(u64, NaiveDateTime)>>;
 
-    async fn find_id_and_timestamp_of_diff_snapshot_point_with_condition<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn find_id_and_timestamp_of_diff_snapshot_point_with_condition(
         time_based_condition: TimeBasedSnapshotSearchCondition,
         conn: &mut Conn,
     ) -> anyhow::Result<Option<(DiffPointId, NaiveDateTime)>>;
 
-    async fn find_id_of_latest_full_snapshot_before<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn find_id_of_latest_full_snapshot_before(
         timestamp: DateTime<Utc>,
         conn: &mut Conn,
     ) -> anyhow::Result<Option<u64>>;
 
-    async fn id_of_root_full_snapshot_of_diff_point<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn id_of_root_full_snapshot_of_diff_point(
         diff_point_id: DiffPointId,
         conn: &mut Conn,
     ) -> anyhow::Result<u64>;
 
-    async fn diff_point_id_to_previous_diff_point_id<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn diff_point_id_to_previous_diff_point_id(
         forest_base_full_snapshot_point_id: u64,
         timestamp_upper_bound: DateTime<Utc>,
         conn: &mut Conn,
@@ -108,10 +84,12 @@ pub trait HasIncrementalSnapshotTables: Sized + Eq + Clone + FromValueColumn {
 }
 
 #[async_trait::async_trait]
-pub trait HasIncrementalSnapshotTablesDefaultMethods: HasIncrementalSnapshotTables {
-    async fn create_full_snapshot<Conn: AsyncConnection<Backend = Mysql> + Send + 'static>(
+pub trait HasIncrementalSnapshotTablesDefaultMethods<Connection: AsyncConnection + Send + 'static>:
+    HasIncrementalSnapshotTables<Connection>
+{
+    async fn create_full_snapshot(
         snapshot: StatsSnapshot<Self>,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<()> {
         let inserted_point_id = Self::create_full_snapshot_point(conn).await?;
 
@@ -123,11 +101,9 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods: HasIncrementalSnapshotTabl
         .await
     }
 
-    async fn find_latest_full_snapshot_before<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn find_latest_full_snapshot_before(
         timestamp: DateTime<Utc>,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<Option<FullSnapshotPoint<Self>>> {
         if let Some(id) = Self::find_id_of_latest_full_snapshot_before(timestamp, conn).await? {
             let full_snapshot = Self::read_full_snapshot_point(id, conn).await?;
@@ -137,11 +113,9 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods: HasIncrementalSnapshotTabl
         }
     }
 
-    async fn find_snapshot_point_with_condition<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn find_snapshot_point_with_condition(
         time_based_condition: TimeBasedSnapshotSearchCondition,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<Option<SnapshotPoint<Self>>> {
         let found_full_snapshot_point =
             Self::find_id_and_timestamp_of_full_snapshot_point_with_condition(
@@ -189,12 +163,10 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods: HasIncrementalSnapshotTabl
         }
     }
 
-    async fn create_diff_snapshot_point_on<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn create_diff_snapshot_point_on(
         diff_sequence: DiffSequence<Self>,
         snapshot: StatsSnapshot<Self>,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<()> {
         let root_point_id = diff_sequence.base_point.id;
         let previous_point_id = diff_sequence.diff_points.last().map(|p| p.id);
@@ -216,11 +188,9 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods: HasIncrementalSnapshotTabl
         .await
     }
 
-    async fn construct_diff_sequence_leading_up_to<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn construct_diff_sequence_leading_up_to(
         snapshot_point: SnapshotPoint<Self>,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<DiffSequence<Self>> {
         match snapshot_point {
             SnapshotPoint::Full(snapshot_point) => {
@@ -232,11 +202,9 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods: HasIncrementalSnapshotTabl
         }
     }
 
-    async fn construct_diff_sequence_leading_up_to_diff_point<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn construct_diff_sequence_leading_up_to_diff_point(
         diff_point: DiffPoint<Self>,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<DiffSequence<Self>> {
         let root_point_id =
             Self::id_of_root_full_snapshot_of_diff_point(diff_point.id, conn).await?;
@@ -273,7 +241,10 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods: HasIncrementalSnapshotTabl
     }
 }
 
-impl<T: HasIncrementalSnapshotTables> HasIncrementalSnapshotTablesDefaultMethods for T {}
+impl<T: HasIncrementalSnapshotTables<Connection>, Connection: AsyncConnection + Send + 'static>
+    HasIncrementalSnapshotTablesDefaultMethods<Connection> for T
+{
+}
 
 impl FromValueColumn for BreakCount {
     type ValueColumnType = u64;
@@ -283,11 +254,18 @@ impl FromValueColumn for BreakCount {
     }
 }
 
+use crate::query_utils::RunFirstOptionalDsl;
+use crate::schema;
+use diesel::mysql::Mysql;
+use diesel::query_dsl::methods::*;
+use diesel::ExpressionMethods;
+use diesel_async::RunQueryDsl;
+
 #[async_trait::async_trait]
-impl HasIncrementalSnapshotTables for BreakCount {
-    async fn create_full_snapshot_point<Conn: AsyncConnection<Backend = Mysql> + Send + 'static>(
-        conn: &mut Conn,
-    ) -> anyhow::Result<u64> {
+impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
+    HasIncrementalSnapshotTables<Connection> for BreakCount
+{
+    async fn create_full_snapshot_point(conn: &mut Connection) -> anyhow::Result<u64> {
         {
             use schema::break_count_full_snapshot_point::dsl::*;
             diesel::insert_into(break_count_full_snapshot_point)
@@ -307,12 +285,10 @@ impl HasIncrementalSnapshotTables for BreakCount {
         Ok(created_full_snapshot_point_id)
     }
 
-    async fn insert_all_stats_at_full_snapshot_point<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn insert_all_stats_at_full_snapshot_point(
         fresh_full_snapshot_point_id: u64,
         player_stats: HashMap<Player, Self>,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<()> {
         use schema::break_count_full_snapshot::dsl::*;
         let records_to_insert = player_stats
@@ -334,11 +310,11 @@ impl HasIncrementalSnapshotTables for BreakCount {
         Ok(())
     }
 
-    async fn create_diff_snapshot_point<Conn: AsyncConnection<Backend = Mysql> + Send + 'static>(
+    async fn create_diff_snapshot_point(
         base_point_id: u64,
         previous_diff_point_id_: Option<DiffPointId>,
         timestamp: DateTime<Utc>,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<DiffPointId> {
         {
             use schema::break_count_diff_point::dsl::*;
@@ -362,12 +338,10 @@ impl HasIncrementalSnapshotTables for BreakCount {
         Ok(DiffPointId(created_diff_snapshot_point_id))
     }
 
-    async fn insert_all_stats_at_diff_snapshot_point<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn insert_all_stats_at_diff_snapshot_point(
         fresh_diff_snapshot_point_id: DiffPointId,
         player_stats_diffs: HashMap<PlayerUuidString, Self>,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<()> {
         use schema::break_count_diff::dsl::*;
         let records_to_insert = player_stats_diffs
@@ -389,9 +363,9 @@ impl HasIncrementalSnapshotTables for BreakCount {
         Ok(())
     }
 
-    async fn read_full_snapshot_point<Conn: AsyncConnection<Backend = Mysql> + Send + 'static>(
+    async fn read_full_snapshot_point(
         full_snapshot_point_id: u64,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<FullSnapshotPoint<Self>> {
         let snapshot_timestamp = {
             use schema::break_count_full_snapshot_point::dsl::*;
@@ -428,9 +402,9 @@ impl HasIncrementalSnapshotTables for BreakCount {
         })
     }
 
-    async fn read_diff_snapshot_points<Conn: AsyncConnection<Backend = Mysql> + Send + 'static>(
+    async fn read_diff_snapshot_points(
         diff_snapshot_point_ids: HashSet<DiffPointId>,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<IdIndexedDiffPoints<Self>> {
         let diff_point_data_map = {
             use schema::break_count_diff_point::dsl::*;
@@ -502,11 +476,9 @@ impl HasIncrementalSnapshotTables for BreakCount {
         ))
     }
 
-    async fn read_diff_snapshot_points_over_full_point<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn read_diff_snapshot_points_over_full_point(
         full_snapshot_point_id: u64,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<IdIndexedDiffPoints<Self>> {
         use schema::break_count_diff_point::dsl::*;
 
@@ -519,11 +491,9 @@ impl HasIncrementalSnapshotTables for BreakCount {
         Ok(Self::read_diff_snapshot_points(diff_point_ids.into_iter().collect(), conn).await?)
     }
 
-    async fn find_id_and_timestamp_of_full_snapshot_point_with_condition<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn find_id_and_timestamp_of_full_snapshot_point_with_condition(
         time_based_condition: TimeBasedSnapshotSearchCondition,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<Option<(u64, NaiveDateTime)>> {
         use schema::break_count_full_snapshot_point::dsl::*;
         match time_based_condition {
@@ -542,11 +512,9 @@ impl HasIncrementalSnapshotTables for BreakCount {
         }
     }
 
-    async fn find_id_and_timestamp_of_diff_snapshot_point_with_condition<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn find_id_and_timestamp_of_diff_snapshot_point_with_condition(
         time_based_condition: TimeBasedSnapshotSearchCondition,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<Option<(DiffPointId, NaiveDateTime)>> {
         use schema::break_count_diff_point::dsl::*;
         match time_based_condition {
@@ -565,11 +533,9 @@ impl HasIncrementalSnapshotTables for BreakCount {
         }
     }
 
-    async fn find_id_of_latest_full_snapshot_before<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn find_id_of_latest_full_snapshot_before(
         timestamp: DateTime<Utc>,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<Option<u64>> {
         use schema::break_count_full_snapshot_point::dsl::*;
         Ok(break_count_full_snapshot_point
@@ -580,11 +546,9 @@ impl HasIncrementalSnapshotTables for BreakCount {
             .await?)
     }
 
-    async fn id_of_root_full_snapshot_of_diff_point<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn id_of_root_full_snapshot_of_diff_point(
         diff_point_id: DiffPointId,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<u64> {
         use schema::break_count_diff_point::dsl::*;
         Ok(break_count_diff_point
@@ -594,12 +558,10 @@ impl HasIncrementalSnapshotTables for BreakCount {
             .await?)
     }
 
-    async fn diff_point_id_to_previous_diff_point_id<
-        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
-    >(
+    async fn diff_point_id_to_previous_diff_point_id(
         forest_base_full_snapshot_point_id: u64,
         timestamp_upper_bound: DateTime<Utc>,
-        conn: &mut Conn,
+        conn: &mut Connection,
     ) -> anyhow::Result<HashMap<DiffPointId, Option<DiffPointId>>> {
         use schema::break_count_diff_point::dsl::*;
         let diff_point_id_to_previous_diff_point_id = break_count_diff_point

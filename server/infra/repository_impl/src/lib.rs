@@ -1,5 +1,5 @@
 use diesel::sql_query;
-use diesel_async::pooled_connection::deadpool::Pool;
+use diesel_async::pooled_connection::deadpool::{Object, Pool};
 use diesel_async::{scoped_futures::ScopedFutureExt, RunQueryDsl};
 use diesel_async::{AsyncConnection, AsyncMysqlConnection};
 use domain::repositories::TimeBasedSnapshotSearchCondition;
@@ -23,8 +23,8 @@ pub struct DatabaseConnector {
 }
 
 #[async_trait::async_trait]
-impl<Stats: HasIncrementalSnapshotTables + Send + 'static> PlayerTimedStatsRepository<Stats>
-    for DatabaseConnector
+impl<Stats: HasIncrementalSnapshotTables<Object<AsyncMysqlConnection>> + Send + 'static>
+    PlayerTimedStatsRepository<Stats> for DatabaseConnector
 {
     async fn record_snapshot(&self, snapshot: StatsSnapshot<Stats>) -> anyhow::Result<()> {
         let mut conn = self.pool.get().await?;
