@@ -70,26 +70,41 @@ pub trait HasIncrementalSnapshotTables: Sized + Eq + Clone + FromValueColumn {
         conn: &mut Conn,
     ) -> anyhow::Result<IdIndexedDiffPoints<Self>>;
 
-    async fn find_snapshot_point_with_condition<
+    async fn find_id_and_timestamp_of_full_snapshot_point_with_condition<
         Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
     >(
         time_based_condition: TimeBasedSnapshotSearchCondition,
         conn: &mut Conn,
-    ) -> anyhow::Result<Option<SnapshotPoint<Self>>>;
+    ) -> anyhow::Result<Option<(u64, NaiveDateTime)>>;
 
-    async fn find_latest_full_snapshot_before<
+    async fn find_id_and_timestamp_of_diff_snapshot_point_with_condition<
+        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
+    >(
+        time_based_condition: TimeBasedSnapshotSearchCondition,
+        conn: &mut Conn,
+    ) -> anyhow::Result<Option<(DiffPointId, NaiveDateTime)>>;
+
+    async fn find_id_of_latest_full_snapshot_before<
         Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
     >(
         timestamp: DateTime<Utc>,
         conn: &mut Conn,
-    ) -> anyhow::Result<Option<FullSnapshotPoint<Self>>>;
+    ) -> anyhow::Result<Option<u64>>;
 
-    async fn construct_diff_sequence_leading_up_to_diff_point<
+    async fn id_of_root_full_snapshot_of_diff_point<
         Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
     >(
-        diff_point: DiffPoint<Self>,
+        diff_point_id: DiffPointId,
         conn: &mut Conn,
-    ) -> anyhow::Result<DiffSequence<Self>>;
+    ) -> anyhow::Result<u64>;
+
+    async fn diff_point_id_to_previous_diff_point_id<
+        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
+    >(
+        forest_base_full_snapshot_point_id: u64,
+        timestamp_upper_bound: DateTime<Utc>,
+        conn: &mut Conn,
+    ) -> anyhow::Result<HashMap<DiffPointId, Option<DiffPointId>>>;
 
     async fn create_full_snapshot<Conn: AsyncConnection<Backend = Mysql> + Send + 'static>(
         snapshot: StatsSnapshot<Self>,
@@ -103,6 +118,72 @@ pub trait HasIncrementalSnapshotTables: Sized + Eq + Clone + FromValueColumn {
             conn,
         )
         .await
+    }
+
+    async fn find_latest_full_snapshot_before<
+        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
+    >(
+        timestamp: DateTime<Utc>,
+        conn: &mut Conn,
+    ) -> anyhow::Result<Option<FullSnapshotPoint<Self>>> {
+        if let Some(id) = Self::find_id_of_latest_full_snapshot_before(timestamp, conn).await? {
+            let full_snapshot = Self::read_full_snapshot_point(id, conn).await?;
+            Ok(Some(full_snapshot))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn find_snapshot_point_with_condition<
+        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
+    >(
+        time_based_condition: TimeBasedSnapshotSearchCondition,
+        conn: &mut Conn,
+    ) -> anyhow::Result<Option<SnapshotPoint<Self>>> {
+        let found_full_snapshot_point =
+            Self::find_id_and_timestamp_of_full_snapshot_point_with_condition(
+                time_based_condition,
+                conn,
+            )
+            .await?;
+
+        let found_diff_snapshot_point =
+            Self::find_id_and_timestamp_of_diff_snapshot_point_with_condition(
+                time_based_condition,
+                conn,
+            )
+            .await?;
+
+        match (found_full_snapshot_point, found_diff_snapshot_point) {
+            (None, None) => return Ok(None),
+            (Some((full_id, _)), None) => {
+                // full snapshot point の方を採用する
+                Ok(Some(SnapshotPoint::Full(
+                    Self::read_full_snapshot_point(full_id, conn).await?,
+                )))
+            }
+            (Some((full_id, full_timestamp)), Some((_, diff_timestamp)))
+                if matches!(time_based_condition, NewestBefore(_))
+                    && full_timestamp > diff_timestamp =>
+            {
+                // full snapshot point の方を採用する
+                Ok(Some(SnapshotPoint::Full(
+                    Self::read_full_snapshot_point(full_id, conn).await?,
+                )))
+            }
+            (_, Some((diff_id, _))) => {
+                // 条件に合致する full snapshot point が存在しないか、
+                // diff snapshot point の方が time_based_condition の timestamp に近いため、
+                // diff snapshot point の方を採用する
+                let diff_point =
+                    Self::read_diff_snapshot_points(vec![diff_id].into_iter().collect(), conn)
+                        .await?
+                        .remove(&diff_id)
+                        .unwrap();
+
+                Ok(Some(SnapshotPoint::Diff(diff_point)))
+            }
+        }
     }
 
     async fn create_diff_snapshot_point_on<
@@ -146,6 +227,46 @@ pub trait HasIncrementalSnapshotTables: Sized + Eq + Clone + FromValueColumn {
                 Self::construct_diff_sequence_leading_up_to_diff_point(diff_point, conn).await
             }
         }
+    }
+
+    async fn construct_diff_sequence_leading_up_to_diff_point<
+        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
+    >(
+        diff_point: DiffPoint<Self>,
+        conn: &mut Conn,
+    ) -> anyhow::Result<DiffSequence<Self>> {
+        let root_point_id =
+            Self::id_of_root_full_snapshot_of_diff_point(diff_point.id, conn).await?;
+        let diff_point_id_to_previous_id_map = Self::diff_point_id_to_previous_diff_point_id(
+            root_point_id,
+            diff_point.diff.utc_timestamp,
+            conn,
+        )
+        .await?;
+
+        // `diff_point` に対応する diff point からその root full snapshot point までの
+        // diff point の ID をさかのぼるような `Vec`。
+        let ids_of_diff_points_towards_root =
+            construct_cycle_free_path(diff_point.id, |id| diff_point_id_to_previous_id_map[&id])?;
+
+        let diff_points_towards_given_point = {
+            let ids_of_diff_points_towards_tip = {
+                let mut ids = ids_of_diff_points_towards_root;
+                ids.reverse();
+                ids
+            };
+
+            let ids_set = ids_of_diff_points_towards_tip.iter().copied().collect();
+            Self::read_diff_snapshot_points(ids_set, conn)
+                .await?
+                .map_ids_to_diff_points(&ids_of_diff_points_towards_tip)
+        };
+
+        let full_snapshot = Self::read_full_snapshot_point(root_point_id, conn).await?;
+        Ok(DiffSequence::new(
+            full_snapshot,
+            diff_points_towards_given_point,
+        ))
     }
 }
 
@@ -393,162 +514,97 @@ impl HasIncrementalSnapshotTables for BreakCount {
         Ok(Self::read_diff_snapshot_points(diff_point_ids.into_iter().collect(), conn).await?)
     }
 
-    async fn find_snapshot_point_with_condition<
+    async fn find_id_and_timestamp_of_full_snapshot_point_with_condition<
         Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
     >(
         time_based_condition: TimeBasedSnapshotSearchCondition,
         conn: &mut Conn,
-    ) -> anyhow::Result<Option<SnapshotPoint<Self>>> {
-        let found_full_snapshot_point: Option<(u64, NaiveDateTime)> = {
-            use schema::break_count_full_snapshot_point::dsl::*;
-            match time_based_condition {
-                NewestBefore(timestamp) => {
-                    break_count_full_snapshot_point
-                        .select((id, record_timestamp))
-                        .filter(record_timestamp.le(timestamp.naive_utc()))
-                        .order(record_timestamp.desc())
-                        .first_optional::<(u64, NaiveDateTime)>(conn)
-                        .await?
-                }
-                OldestAfter(timestamp) => {
-                    break_count_full_snapshot_point
-                        .select((id, record_timestamp))
-                        .filter(record_timestamp.ge(timestamp.naive_utc()))
-                        .order(record_timestamp.asc())
-                        .first_optional::<(u64, NaiveDateTime)>(conn)
-                        .await?
-                }
-            }
-        };
-
-        let found_diff_snapshot_point: Option<(DiffPointId, NaiveDateTime)> = {
-            use schema::break_count_diff_point::dsl::*;
-            match time_based_condition {
-                NewestBefore(timestamp) => {
-                    break_count_diff_point
-                        .select((id, record_timestamp))
-                        .filter(record_timestamp.le(timestamp.naive_utc()))
-                        .order(record_timestamp.desc())
-                        .first_optional::<(DiffPointId, NaiveDateTime)>(conn)
-                        .await?
-                }
-                OldestAfter(timestamp) => {
-                    break_count_diff_point
-                        .select((id, record_timestamp))
-                        .filter(record_timestamp.ge(timestamp.naive_utc()))
-                        .order(record_timestamp.asc())
-                        .first_optional::<(DiffPointId, NaiveDateTime)>(conn)
-                        .await?
-                }
-            }
-        };
-
-        match (found_full_snapshot_point, found_diff_snapshot_point) {
-            (None, None) => return Ok(None),
-            (Some((full_id, _)), None) => {
-                // full snapshot point の方を採用する
-                Ok(Some(SnapshotPoint::Full(
-                    Self::read_full_snapshot_point(full_id, conn).await?,
-                )))
-            }
-            (Some((full_id, full_timestamp)), Some((_, diff_timestamp)))
-                if matches!(time_based_condition, NewestBefore(_))
-                    && full_timestamp > diff_timestamp =>
-            {
-                // full snapshot point の方を採用する
-                Ok(Some(SnapshotPoint::Full(
-                    Self::read_full_snapshot_point(full_id, conn).await?,
-                )))
-            }
-            (_, Some((diff_id, _))) => {
-                // 条件に合致する full snapshot point が存在しないか、
-                // diff snapshot point の方が time_based_condition の timestamp に近いため、
-                // diff snapshot point の方を採用する
-                let diff_point =
-                    Self::read_diff_snapshot_points(vec![diff_id].into_iter().collect(), conn)
-                        .await?
-                        .remove(&diff_id)
-                        .unwrap();
-
-                Ok(Some(SnapshotPoint::Diff(diff_point)))
-            }
+    ) -> anyhow::Result<Option<(u64, NaiveDateTime)>> {
+        use schema::break_count_full_snapshot_point::dsl::*;
+        match time_based_condition {
+            NewestBefore(timestamp) => Ok(break_count_full_snapshot_point
+                .select((id, record_timestamp))
+                .filter(record_timestamp.le(timestamp.naive_utc()))
+                .order(record_timestamp.desc())
+                .first_optional::<(u64, NaiveDateTime)>(conn)
+                .await?),
+            OldestAfter(timestamp) => Ok(break_count_full_snapshot_point
+                .select((id, record_timestamp))
+                .filter(record_timestamp.ge(timestamp.naive_utc()))
+                .order(record_timestamp.asc())
+                .first_optional::<(u64, NaiveDateTime)>(conn)
+                .await?),
         }
     }
 
-    async fn find_latest_full_snapshot_before<
+    async fn find_id_and_timestamp_of_diff_snapshot_point_with_condition<
+        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
+    >(
+        time_based_condition: TimeBasedSnapshotSearchCondition,
+        conn: &mut Conn,
+    ) -> anyhow::Result<Option<(DiffPointId, NaiveDateTime)>> {
+        use schema::break_count_diff_point::dsl::*;
+        match time_based_condition {
+            NewestBefore(timestamp) => Ok(break_count_diff_point
+                .select((id, record_timestamp))
+                .filter(record_timestamp.le(timestamp.naive_utc()))
+                .order(record_timestamp.desc())
+                .first_optional::<(DiffPointId, NaiveDateTime)>(conn)
+                .await?),
+            OldestAfter(timestamp) => Ok(break_count_diff_point
+                .select((id, record_timestamp))
+                .filter(record_timestamp.ge(timestamp.naive_utc()))
+                .order(record_timestamp.asc())
+                .first_optional::<(DiffPointId, NaiveDateTime)>(conn)
+                .await?),
+        }
+    }
+
+    async fn find_id_of_latest_full_snapshot_before<
         Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
     >(
         timestamp: DateTime<Utc>,
         conn: &mut Conn,
-    ) -> anyhow::Result<Option<FullSnapshotPoint<Self>>> {
-        if let Some(id) = {
-            use schema::break_count_full_snapshot_point::dsl::*;
-            break_count_full_snapshot_point
-                .select(id)
-                .filter(record_timestamp.le(timestamp.naive_utc()))
-                .order(record_timestamp.desc())
-                .first_optional::<u64>(conn)
-                .await?
-        } {
-            let full_snapshot = Self::read_full_snapshot_point(id, conn).await?;
-            Ok(Some(full_snapshot))
-        } else {
-            Ok(None)
-        }
+    ) -> anyhow::Result<Option<u64>> {
+        use schema::break_count_full_snapshot_point::dsl::*;
+        Ok(break_count_full_snapshot_point
+            .select(id)
+            .filter(record_timestamp.le(timestamp.naive_utc()))
+            .order(record_timestamp.desc())
+            .first_optional::<u64>(conn)
+            .await?)
     }
 
-    async fn construct_diff_sequence_leading_up_to_diff_point<
+    async fn id_of_root_full_snapshot_of_diff_point<
         Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
     >(
-        diff_point: DiffPoint<Self>,
+        diff_point_id: DiffPointId,
         conn: &mut Conn,
-    ) -> anyhow::Result<DiffSequence<Self>> {
-        let root_point_id = {
-            use schema::break_count_diff_point::dsl::*;
-            break_count_diff_point
-                .select(root_full_snapshot_point_id)
-                .filter(id.eq(diff_point.id))
-                .first::<u64>(conn)
-                .await?
-        };
+    ) -> anyhow::Result<u64> {
+        use schema::break_count_diff_point::dsl::*;
+        Ok(break_count_diff_point
+            .select(root_full_snapshot_point_id)
+            .filter(id.eq(diff_point_id))
+            .first::<u64>(conn)
+            .await?)
+    }
 
-        // diff point `p` の ID から `p.previous_diff_point_id` への `HashMap`。
-        // `filter` の条件と `root_point_id` の定義により、
-        // `diff_point_id` が必ずキー集合に含まれる。
-        let diff_point_id_to_previous_id_map = {
-            use schema::break_count_diff_point::dsl::*;
-            break_count_diff_point
-                .select((id, previous_diff_point_id))
-                .filter(root_full_snapshot_point_id.eq(root_point_id))
-                .filter(record_timestamp.le(diff_point.diff.utc_timestamp.naive_utc()))
-                .load::<(DiffPointId, Option<DiffPointId>)>(conn)
-        }
-        .await?
-        .into_iter()
-        .collect::<HashMap<_, _>>();
-
-        // `diff_point` に対応する diff point からその root full snapshot point までの
-        // diff point の ID をさかのぼるような `Vec`。
-        let ids_of_diff_points_towards_root =
-            construct_cycle_free_path(diff_point.id, |id| diff_point_id_to_previous_id_map[&id])?;
-
-        let diff_points_towards_given_point = {
-            let ids_of_diff_points_towards_tip = {
-                let mut ids = ids_of_diff_points_towards_root;
-                ids.reverse();
-                ids
-            };
-
-            let ids_set = ids_of_diff_points_towards_tip.iter().copied().collect();
-            Self::read_diff_snapshot_points(ids_set, conn)
-                .await?
-                .map_ids_to_diff_points(&ids_of_diff_points_towards_tip)
-        };
-
-        let full_snapshot = Self::read_full_snapshot_point(root_point_id, conn).await?;
-        Ok(DiffSequence::new(
-            full_snapshot,
-            diff_points_towards_given_point,
-        ))
+    async fn diff_point_id_to_previous_diff_point_id<
+        Conn: AsyncConnection<Backend = Mysql> + Send + 'static,
+    >(
+        forest_base_full_snapshot_point_id: u64,
+        timestamp_upper_bound: DateTime<Utc>,
+        conn: &mut Conn,
+    ) -> anyhow::Result<HashMap<DiffPointId, Option<DiffPointId>>> {
+        use schema::break_count_diff_point::dsl::*;
+        let diff_point_id_to_previous_diff_point_id = break_count_diff_point
+            .select((id, previous_diff_point_id))
+            .filter(root_full_snapshot_point_id.eq(forest_base_full_snapshot_point_id))
+            .filter(record_timestamp.le(timestamp_upper_bound.naive_utc()))
+            .load::<(DiffPointId, Option<DiffPointId>)>(conn)
+            .await?
+            .into_iter()
+            .collect();
+        Ok(diff_point_id_to_previous_diff_point_id)
     }
 }

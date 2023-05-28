@@ -1,6 +1,7 @@
 use crate::models::StatsSnapshot;
 use chrono::{DateTime, Utc};
 
+#[derive(Debug, Clone, Copy)]
 pub enum TimeBasedSnapshotSearchCondition {
     NewestBefore(DateTime<Utc>),
     OldestAfter(DateTime<Utc>),
