@@ -48,17 +48,17 @@ impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
 {
     async fn create_full_snapshot_point(conn: &mut Connection) -> anyhow::Result<u64> {
         {
-            use schema::break_count_full_snapshot_point::dsl::*;
-            diesel::insert_into(break_count_full_snapshot_point)
-                .values(record_timestamp.eq(Utc::now().naive_utc()))
+            use schema::break_count_full_snapshot_point::dsl;
+            diesel::insert_into(dsl::break_count_full_snapshot_point)
+                .values(dsl::record_timestamp.eq(Utc::now().naive_utc()))
                 .execute(conn)
                 .await?;
         }
         let created_full_snapshot_point_id = {
-            use schema::break_count_full_snapshot_point::dsl::*;
-            break_count_full_snapshot_point
-                .select(id)
-                .order(id.desc())
+            use schema::break_count_full_snapshot_point::dsl;
+            dsl::break_count_full_snapshot_point
+                .select(dsl::id)
+                .order(dsl::id.desc())
                 .first::<u64>(conn)
                 .await?
         };
@@ -71,19 +71,19 @@ impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
         player_stats: HashMap<Player, Self>,
         conn: &mut Connection,
     ) -> anyhow::Result<()> {
-        use schema::break_count_full_snapshot::dsl::*;
+        use schema::break_count_full_snapshot::dsl;
         let records_to_insert = player_stats
             .iter()
-            .map(|(player, break_count)| {
+            .map(|(player, stats)| {
                 anyhow::Ok((
-                    full_snapshot_point_id.eq(fresh_full_snapshot_point_id),
-                    player_uuid.eq(player.uuid.as_str()?),
-                    value.eq(break_count.0),
+                    dsl::full_snapshot_point_id.eq(fresh_full_snapshot_point_id),
+                    dsl::player_uuid.eq(player.uuid.as_str()?),
+                    dsl::value.eq(stats.0),
                 ))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        diesel::insert_into(break_count_full_snapshot)
+        diesel::insert_into(dsl::break_count_full_snapshot)
             .values(records_to_insert)
             .execute(conn)
             .await?;
@@ -92,27 +92,27 @@ impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
     }
 
     async fn create_diff_snapshot_point(
-        base_point_id: u64,
-        previous_diff_point_id_: Option<DiffPointId>,
+        base_full_snapshot_point_id: u64,
+        previous_diff_point_id: Option<DiffPointId>,
         timestamp: DateTime<Utc>,
         conn: &mut Connection,
     ) -> anyhow::Result<DiffPointId> {
         {
-            use schema::break_count_diff_point::dsl::*;
-            diesel::insert_into(break_count_diff_point)
+            use schema::break_count_diff_point::dsl;
+            diesel::insert_into(dsl::break_count_diff_point)
                 .values((
-                    root_full_snapshot_point_id.eq(base_point_id),
-                    previous_diff_point_id.eq(previous_diff_point_id_),
-                    record_timestamp.eq(timestamp.naive_utc()),
+                    dsl::root_full_snapshot_point_id.eq(base_full_snapshot_point_id),
+                    dsl::previous_diff_point_id.eq(previous_diff_point_id),
+                    dsl::record_timestamp.eq(timestamp.naive_utc()),
                 ))
                 .execute(conn)
                 .await?;
         }
         let created_diff_snapshot_point_id = {
-            use schema::break_count_diff_point::dsl::*;
-            break_count_diff_point
-                .select(id)
-                .order(id.desc())
+            use schema::break_count_diff_point::dsl;
+            dsl::break_count_diff_point
+                .select(dsl::id)
+                .order(dsl::id.desc())
                 .first::<u64>(conn)
                 .await?
         };
@@ -124,19 +124,19 @@ impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
         player_stats_diffs: HashMap<PlayerUuidString, Self>,
         conn: &mut Connection,
     ) -> anyhow::Result<()> {
-        use schema::break_count_diff::dsl::*;
+        use schema::break_count_diff::dsl;
         let records_to_insert = player_stats_diffs
             .iter()
-            .map(|(uuid, break_count)| {
+            .map(|(player_uuid, stats)| {
                 anyhow::Ok((
-                    diff_point_id.eq(fresh_diff_snapshot_point_id.0),
-                    player_uuid.eq(uuid.as_str()?),
-                    new_value.eq(break_count.0),
+                    dsl::diff_point_id.eq(fresh_diff_snapshot_point_id.0),
+                    dsl::player_uuid.eq(player_uuid.as_str()?),
+                    dsl::new_value.eq(stats.0),
                 ))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        diesel::insert_into(break_count_diff)
+        diesel::insert_into(dsl::break_count_diff)
             .values(records_to_insert)
             .execute(conn)
             .await?;
@@ -149,19 +149,19 @@ impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
         conn: &mut Connection,
     ) -> anyhow::Result<FullSnapshotPoint<Self>> {
         let snapshot_timestamp = {
-            use schema::break_count_full_snapshot_point::dsl::*;
-            break_count_full_snapshot_point
-                .select(record_timestamp)
-                .filter(id.eq(full_snapshot_point_id))
+            use schema::break_count_full_snapshot_point::dsl;
+            dsl::break_count_full_snapshot_point
+                .select(dsl::record_timestamp)
+                .filter(dsl::id.eq(full_snapshot_point_id))
                 .first::<NaiveDateTime>(conn)
                 .await?
         };
 
         let player_stats = {
-            use schema::break_count_full_snapshot::dsl::*;
-            break_count_full_snapshot
-                .select((player_uuid, value))
-                .filter(full_snapshot_point_id.eq(full_snapshot_point_id))
+            use schema::break_count_full_snapshot::dsl;
+            dsl::break_count_full_snapshot
+                .select((dsl::player_uuid, dsl::value))
+                .filter(dsl::full_snapshot_point_id.eq(full_snapshot_point_id))
                 .load::<(String, u64)>(conn)
         }
         .await?
@@ -188,10 +188,10 @@ impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
         conn: &mut Connection,
     ) -> anyhow::Result<IdIndexedDiffPoints<Self>> {
         let diff_point_data_map = {
-            use schema::break_count_diff_point::dsl::*;
-            break_count_diff_point
-                .select((id, previous_diff_point_id, record_timestamp))
-                .filter(id.eq_any(&diff_snapshot_point_ids))
+            use schema::break_count_diff_point::dsl;
+            dsl::break_count_diff_point
+                .select((dsl::id, dsl::previous_diff_point_id, dsl::record_timestamp))
+                .filter(dsl::id.eq_any(&diff_snapshot_point_ids))
                 .load::<(DiffPointId, Option<DiffPointId>, NaiveDateTime)>(conn)
         }
         .await?
@@ -213,10 +213,10 @@ impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
         }
 
         let diffs = {
-            use schema::break_count_diff::dsl::*;
-            break_count_diff
-                .select((diff_point_id, player_uuid, new_value))
-                .filter(diff_point_id.eq_any(&diff_snapshot_point_ids))
+            use schema::break_count_diff::dsl;
+            dsl::break_count_diff
+                .select((dsl::diff_point_id, dsl::player_uuid, dsl::new_value))
+                .filter(dsl::diff_point_id.eq_any(&diff_snapshot_point_ids))
                 .load::<(DiffPointId, String, u64)>(conn)
         }
         .await?
@@ -261,11 +261,11 @@ impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
         full_snapshot_point_id: u64,
         conn: &mut Connection,
     ) -> anyhow::Result<IdIndexedDiffPoints<Self>> {
-        use schema::break_count_diff_point::dsl::*;
+        use schema::break_count_diff_point::dsl;
 
-        let diff_point_ids = break_count_diff_point
-            .select(id)
-            .filter(root_full_snapshot_point_id.eq(full_snapshot_point_id))
+        let diff_point_ids = dsl::break_count_diff_point
+            .select(dsl::id)
+            .filter(dsl::root_full_snapshot_point_id.eq(full_snapshot_point_id))
             .load::<DiffPointId>(conn)
             .await?;
 
@@ -276,18 +276,18 @@ impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
         time_based_condition: TimeBasedSnapshotSearchCondition,
         conn: &mut Connection,
     ) -> anyhow::Result<Option<(u64, NaiveDateTime)>> {
-        use schema::break_count_full_snapshot_point::dsl::*;
+        use schema::break_count_full_snapshot_point::dsl;
         match time_based_condition {
-            NewestBefore(timestamp) => Ok(break_count_full_snapshot_point
-                .select((id, record_timestamp))
-                .filter(record_timestamp.le(timestamp.naive_utc()))
-                .order(record_timestamp.desc())
+            NewestBefore(timestamp) => Ok(dsl::break_count_full_snapshot_point
+                .select((dsl::id, dsl::record_timestamp))
+                .filter(dsl::record_timestamp.le(timestamp.naive_utc()))
+                .order(dsl::record_timestamp.desc())
                 .first_optional::<(u64, NaiveDateTime)>(conn)
                 .await?),
-            OldestAfter(timestamp) => Ok(break_count_full_snapshot_point
-                .select((id, record_timestamp))
-                .filter(record_timestamp.ge(timestamp.naive_utc()))
-                .order(record_timestamp.asc())
+            OldestAfter(timestamp) => Ok(dsl::break_count_full_snapshot_point
+                .select((dsl::id, dsl::record_timestamp))
+                .filter(dsl::record_timestamp.ge(timestamp.naive_utc()))
+                .order(dsl::record_timestamp.asc())
                 .first_optional::<(u64, NaiveDateTime)>(conn)
                 .await?),
         }
@@ -297,18 +297,18 @@ impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
         time_based_condition: TimeBasedSnapshotSearchCondition,
         conn: &mut Connection,
     ) -> anyhow::Result<Option<(DiffPointId, NaiveDateTime)>> {
-        use schema::break_count_diff_point::dsl::*;
+        use schema::break_count_diff_point::dsl;
         match time_based_condition {
-            NewestBefore(timestamp) => Ok(break_count_diff_point
-                .select((id, record_timestamp))
-                .filter(record_timestamp.le(timestamp.naive_utc()))
-                .order(record_timestamp.desc())
+            NewestBefore(timestamp) => Ok(dsl::break_count_diff_point
+                .select((dsl::id, dsl::record_timestamp))
+                .filter(dsl::record_timestamp.le(timestamp.naive_utc()))
+                .order(dsl::record_timestamp.desc())
                 .first_optional::<(DiffPointId, NaiveDateTime)>(conn)
                 .await?),
-            OldestAfter(timestamp) => Ok(break_count_diff_point
-                .select((id, record_timestamp))
-                .filter(record_timestamp.ge(timestamp.naive_utc()))
-                .order(record_timestamp.asc())
+            OldestAfter(timestamp) => Ok(dsl::break_count_diff_point
+                .select((dsl::id, dsl::record_timestamp))
+                .filter(dsl::record_timestamp.ge(timestamp.naive_utc()))
+                .order(dsl::record_timestamp.asc())
                 .first_optional::<(DiffPointId, NaiveDateTime)>(conn)
                 .await?),
         }
@@ -318,11 +318,11 @@ impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
         timestamp: DateTime<Utc>,
         conn: &mut Connection,
     ) -> anyhow::Result<Option<u64>> {
-        use schema::break_count_full_snapshot_point::dsl::*;
-        Ok(break_count_full_snapshot_point
-            .select(id)
-            .filter(record_timestamp.le(timestamp.naive_utc()))
-            .order(record_timestamp.desc())
+        use schema::break_count_full_snapshot_point::dsl;
+        Ok(dsl::break_count_full_snapshot_point
+            .select(dsl::id)
+            .filter(dsl::record_timestamp.le(timestamp.naive_utc()))
+            .order(dsl::record_timestamp.desc())
             .first_optional::<u64>(conn)
             .await?)
     }
@@ -331,10 +331,10 @@ impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
         diff_point_id: DiffPointId,
         conn: &mut Connection,
     ) -> anyhow::Result<u64> {
-        use schema::break_count_diff_point::dsl::*;
-        Ok(break_count_diff_point
-            .select(root_full_snapshot_point_id)
-            .filter(id.eq(diff_point_id))
+        use schema::break_count_diff_point::dsl;
+        Ok(dsl::break_count_diff_point
+            .select(dsl::root_full_snapshot_point_id)
+            .filter(dsl::id.eq(diff_point_id))
             .first::<u64>(conn)
             .await?)
     }
@@ -344,11 +344,11 @@ impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
         timestamp_upper_bound: DateTime<Utc>,
         conn: &mut Connection,
     ) -> anyhow::Result<HashMap<DiffPointId, Option<DiffPointId>>> {
-        use schema::break_count_diff_point::dsl::*;
-        let diff_point_id_to_previous_diff_point_id = break_count_diff_point
-            .select((id, previous_diff_point_id))
-            .filter(root_full_snapshot_point_id.eq(forest_base_full_snapshot_point_id))
-            .filter(record_timestamp.le(timestamp_upper_bound.naive_utc()))
+        use schema::break_count_diff_point::dsl;
+        let diff_point_id_to_previous_diff_point_id = dsl::break_count_diff_point
+            .select((dsl::id, dsl::previous_diff_point_id))
+            .filter(dsl::root_full_snapshot_point_id.eq(forest_base_full_snapshot_point_id))
+            .filter(dsl::record_timestamp.le(timestamp_upper_bound.naive_utc()))
             .load::<(DiffPointId, Option<DiffPointId>)>(conn)
             .await?
             .into_iter()
