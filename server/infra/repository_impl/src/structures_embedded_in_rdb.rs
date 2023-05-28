@@ -166,10 +166,17 @@ fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Clone + Eq>(
     sequence: DiffSequence<Stats>,
     snapshot: &StatsSnapshot<Stats>,
 ) -> DiffSequence<Stats> {
+    /// `snapshot` に対する、 `sequence` 内の diff point の損失関数。
+    /// この損失関数は、 `sequence` 内の diff point のうち、
+    ///  - `snapshot` にできるだけ近く、
+    ///  - 復元時のコストができるだけ低く
+    /// なるようなものを選ぶために利用する。
     fn loss_function(size_at_depth: &DiffSizeAtParticularDepth) -> OrderedFloat<f64> {
-        let depth = size_at_depth.diff_sequence_depth;
-        let total_diffs = size_at_depth.total_diffs_on_current_diff_sequence;
-        let diffs = size_at_depth.diffs_from_tip_to_snapshot;
+        let DiffSizeAtParticularDepth {
+            diff_sequence_depth: depth,
+            total_diffs_on_current_diff_sequence: total_diffs,
+            diffs_from_tip_to_snapshot: diffs,
+        } = size_at_depth;
 
         OrderedFloat::from(((diffs + 1) as f64) * ((total_diffs + depth + 1) as f64).log(20.0))
     }
@@ -193,18 +200,24 @@ fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Clone + Eq>(
         }
     }
 
+    // 特定の diff point の (`sequence` と `snapshot` に基づいた) 情報のうち、
+    // 損失関数を計算するのに必要なものを集めたもの。
     struct DiffSizeAtParticularDepth {
+        /// その diff point の `sequence` 内のインデックス。
         diff_sequence_depth: usize,
+        /// `sequence.take(diff_sequence_depth)` に含まれる `player_stats_diffs` の総数。
         total_diffs_on_current_diff_sequence: usize,
+        /// `sequence.take(diff_sequence_depth).into_snapshot_at_the_tip()` と
+        /// `snapshot` の差分の `player_stats_diffs` の総数。
         diffs_from_tip_to_snapshot: usize,
     }
 
-    let virtual_diff_at_base = SnapshotDiff {
+    let virtual_empty_diff_at_base = SnapshotDiff {
         utc_timestamp: base_point.full_snapshot.utc_timestamp,
         player_stats_diffs: HashMap::new(),
     };
 
-    let optimal_depth_size_pair = std::iter::once(&virtual_diff_at_base)
+    let optimal_depth_size_pair = std::iter::once(&virtual_empty_diff_at_base)
         .chain(diff_points.iter().map(|diff_point| &diff_point.diff))
         .scan(ScanState::new(base_point.clone()), |state, diff| {
             diff.apply_to_mut(&mut state.current_snapshot);
@@ -241,12 +254,8 @@ impl<Stats: Clone> IdIndexedDiffPoints<Stats> {
         )
     }
 
-    fn is_too_large_to_add_another_diff_point(&self) -> bool {
-        self.0.len() >= 1000
-    }
-
-    fn is_empty(&self) -> bool {
-        self.0.is_empty()
+    fn size(&self) -> usize {
+        self.0.len()
     }
 
     fn latest(&self) -> Option<&DiffPoint<Stats>> {
@@ -257,10 +266,6 @@ impl<Stats: Clone> IdIndexedDiffPoints<Stats> {
 
     fn unsafe_get(&self, id: DiffPointId) -> &DiffPoint<Stats> {
         self.0.get(&id).unwrap()
-    }
-
-    pub fn remove(&mut self, id: &DiffPointId) -> Option<DiffPoint<Stats>> {
-        self.0.remove(id)
     }
 
     pub fn points_before(self, timestamp: DateTime<Utc>) -> Self {
@@ -322,14 +327,30 @@ pub fn choose_base_diff_sequence_for_snapshot_with_heuristics<Stats: Clone + Eq>
     // かといって diff sequence の大きさで full snapshot の頻度を決定するため、
     // diff sequence の大きさを無視するわけにもいかない。
     //
-    // TODO: 詳細な実装戦略を書く
+    // そこで、 `choose_sub_diff_sequence_for_snapshot_with_heuristics` 内の `loss_function` によって、
+    //  - diff sequence の大きさ (長さと、diff sequence 内の合計 diff レコード数)
+    //  - 追加する diff レコード数
+    // の両方を加味した「損失」を定義し、これを最小化するように基底の diff point を採用するようにする。
+    //
+    // 基底の full snapshot point `base_point` 上のすべての diff point `d` について
+    // 損失を計算するのはコストが高いため、近似解として、最新の diff point の
+    // 祖先のうち、最も損失が小さいものを基底の diff point とすることとした。
 
-    if all_diff_points_over_base_point.is_too_large_to_add_another_diff_point() {
-        return Ok(DiffSequenceChoice::NoAppropriatePointFound);
-    }
+    {
+        let diff_points_count = all_diff_points_over_base_point.len();
 
-    if all_diff_points_over_base_point.is_empty() {
-        return Ok(DiffSequenceChoice::NoAppropriatePointFound);
+        // diff point が存在しない場合は full snapshot 上に diff point を作成すればよい。
+        if diff_points_count == 0 {
+            return Ok(DiffSequenceChoice::OptimalAccordingToHeuristics(
+                DiffSequence::new(base_point, vec![]),
+            ));
+        }
+
+        // diff point がすでに多すぎる場合は、 diff point の追加を諦める
+        // (上位の処理は、代わりに full snapshot を作成するはず)。
+        if diff_points_count > 2500 {
+            return Ok(DiffSequenceChoice::NoAppropriatePointFound);
+        }
     }
 
     let optimal_sub_diff_sequence_towards_latest_point =
@@ -338,6 +359,8 @@ pub fn choose_base_diff_sequence_for_snapshot_with_heuristics<Stats: Clone + Eq>
             snapshot,
         );
 
+    // 最良と判断された diff sequence が十分に長ければ、
+    // diff point の追加を諦める (上位の処理は、代わりに full snapshot を作成するはず)。
     if optimal_sub_diff_sequence_towards_latest_point.len() > 1000 {
         return Ok(DiffSequenceChoice::NoAppropriatePointFound);
     }
