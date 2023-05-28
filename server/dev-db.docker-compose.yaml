@@ -1,6 +1,6 @@
 version: "3.9"
 
-# 開発環境で diesel-cli に使ってもらうための DB
+# 開発環境で diesel_based_impl-cli に使ってもらうための DB
 services:
   db:
     # プロダクションが利用しているバージョンと合わせるべき

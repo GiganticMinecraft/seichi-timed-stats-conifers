@@ -1,9 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
-use diesel::backend::{Backend, RawValue};
-use diesel::deserialize::FromSql;
-use diesel::serialize::ToSql;
 use domain::models::{Player, PlayerUuidString, StatsSnapshot};
 use ordered_float::OrderedFloat;
 
@@ -83,31 +80,6 @@ impl<Stats: Eq + Clone> ComputeDiff for StatsSnapshot<Stats> {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, diesel::AsExpression, diesel::FromSqlRow, Debug)]
 #[diesel(sql_type = diesel::sql_types::Unsigned<diesel::sql_types::BigInt>)]
 pub struct DiffPointId(pub u64);
-
-use crate::cycle_free_path::construct_cycle_free_path;
-use diesel::sql_types::BigInt;
-use diesel::sql_types::Unsigned;
-
-impl<B: Backend> ToSql<Unsigned<BigInt>, B> for DiffPointId
-where
-    u64: ToSql<Unsigned<BigInt>, B>,
-{
-    fn to_sql<'b>(
-        &'b self,
-        out: &mut diesel::serialize::Output<'b, '_, B>,
-    ) -> diesel::serialize::Result {
-        ToSql::<Unsigned<BigInt>, B>::to_sql(&self.0, out)
-    }
-}
-
-impl<B: Backend> FromSql<Unsigned<BigInt>, B> for DiffPointId
-where
-    u64: FromSql<Unsigned<BigInt>, B>,
-{
-    fn from_sql(bytes: RawValue<'_, B>) -> diesel::deserialize::Result<Self> {
-        <u64 as FromSql<Unsigned<BigInt>, B>>::from_sql(bytes).map(DiffPointId)
-    }
-}
 
 pub struct DiffPoint<Stats> {
     pub id: DiffPointId,
@@ -290,7 +262,7 @@ impl<Stats: Clone> IdIndexedDiffPoints<Stats> {
         base_point: FullSnapshotPoint<Stats>,
     ) -> anyhow::Result<DiffSequence<Stats>> {
         let ids_of_diff_points_towards_base_point =
-            construct_cycle_free_path(self.latest().unwrap().id, |id| {
+            crate::cycle_free_path::construct_cycle_free_path(self.latest().unwrap().id, |id| {
                 self.unsafe_get(id).previous_diff_point_id
             })?;
 

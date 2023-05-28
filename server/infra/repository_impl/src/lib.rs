@@ -13,8 +13,7 @@ use stats_with_incremental_snapshot_tables::{
 };
 
 mod cycle_free_path;
-mod query_utils;
-mod schema;
+mod diesel_based_impl;
 mod stats_with_incremental_snapshot_tables;
 mod structures_embedded_in_rdb;
 
