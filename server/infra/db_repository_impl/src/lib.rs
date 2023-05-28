@@ -1,5 +1,6 @@
 use diesel::sql_query;
 use diesel_async::pooled_connection::deadpool::{Object, Pool};
+use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::{scoped_futures::ScopedFutureExt, RunQueryDsl};
 use diesel_async::{AsyncConnection, AsyncMysqlConnection};
 use domain::repositories::TimeBasedSnapshotSearchCondition;
@@ -17,8 +18,35 @@ mod diesel_based_impl;
 mod stats_with_incremental_snapshot_tables;
 mod structures_embedded_in_rdb;
 
+pub mod config {
+    #[derive(Debug, serde::Deserialize, Clone)]
+    pub struct Database {
+        pub db_connection_url: String,
+        pub db_connection_pool_size: u32,
+    }
+
+    impl Database {
+        pub fn from_env() -> anyhow::Result<Self> {
+            Ok(envy::from_env::<Self>()?)
+        }
+    }
+}
+
 pub struct DatabaseConnector {
     pool: Pool<AsyncMysqlConnection>,
+}
+
+impl DatabaseConnector {
+    pub async fn try_new(config: config::Database) -> anyhow::Result<Self> {
+        let config =
+            AsyncDieselConnectionManager::<AsyncMysqlConnection>::new(config.db_connection_url);
+
+        let pool = Pool::builder()
+            .max_size(config.db_connection_pool_size)
+            .build()?;
+
+        Ok(Self { pool })
+    }
 }
 
 #[async_trait::async_trait]

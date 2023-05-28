@@ -28,7 +28,7 @@ pub struct GrpcUpstreamRepository {
 }
 
 impl GrpcUpstreamRepository {
-    pub async fn new(config: config::GrpcClient) -> anyhow::Result<Self> {
+    pub async fn try_new(config: config::GrpcClient) -> anyhow::Result<Self> {
         let client = ReadServiceClient::connect(config.game_data_server_grpc_endpoint_url).await?;
         Ok(Self { client })
     }
