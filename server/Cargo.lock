@@ -2370,6 +2370,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "upstream-repository-impl"
+version = "0.1.0"
+dependencies = [
+ "domain",
+]
+
+[[package]]
 name = "url"
 version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
