@@ -7,17 +7,12 @@ use crate::structures_embedded_in_rdb::{
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
 
-use domain::models::{BreakCount, Player, PlayerUuidString, StatsSnapshot};
+use domain::models::{Player, PlayerUuidString, StatsSnapshot};
 use domain::repositories::TimeBasedSnapshotSearchCondition;
 use TimeBasedSnapshotSearchCondition::NewestBefore;
 
-pub trait FromValueColumn {
-    type ValueColumnType;
-    fn from_value_column(value_column: Self::ValueColumnType) -> Self;
-}
-
 #[async_trait::async_trait]
-pub trait HasIncrementalSnapshotTables<DBConnection>: Sized + Eq + Clone + FromValueColumn {
+pub trait HasIncrementalSnapshotTables<DBConnection>: Sized + Eq + Clone {
     async fn create_full_snapshot_point(conn: &mut DBConnection) -> anyhow::Result<u64>;
 
     async fn insert_all_stats_at_full_snapshot_point(
@@ -242,12 +237,4 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods<DBConnection: Send>:
 impl<T: HasIncrementalSnapshotTables<DBConnection>, DBConnection: Send>
     HasIncrementalSnapshotTablesDefaultMethods<DBConnection> for T
 {
-}
-
-impl FromValueColumn for BreakCount {
-    type ValueColumnType = u64;
-
-    fn from_value_column(value_column: Self::ValueColumnType) -> Self {
-        Self(value_column)
-    }
 }

@@ -5,7 +5,7 @@ use diesel::mysql::Mysql;
 use diesel::query_dsl::methods::*;
 use diesel::ExpressionMethods;
 use diesel_async::{AsyncConnection, RunQueryDsl};
-use domain::models::{BreakCount, Player};
+use domain::models::{BreakCount, BuildCount, PlayTicks, Player, VoteCount};
 use std::collections::{HashMap, HashSet};
 
 use anyhow::anyhow;
@@ -19,8 +19,28 @@ use domain::repositories::TimeBasedSnapshotSearchCondition;
 
 use super::schema;
 use crate::diesel_based_impl::query_utils::RunFirstOptionalDsl;
-use crate::stats_with_incremental_snapshot_tables::FromValueColumn;
 use crate::stats_with_incremental_snapshot_tables::HasIncrementalSnapshotTables;
+
+pub trait FromValueColumn {
+    type ValueColumnType;
+    fn from_value_column(value_column: Self::ValueColumnType) -> Self;
+}
+
+macro_rules! from_value_column_impl {
+    ($stats_type:ty, $stats_type_constructor:ident, $column_type:ty) => {
+        impl FromValueColumn for $stats_type {
+            type ValueColumnType = $column_type;
+            fn from_value_column(value_column: Self::ValueColumnType) -> Self {
+                $stats_type_constructor(value_column)
+            }
+        }
+    };
+}
+
+from_value_column_impl!(BreakCount, BreakCount, u64);
+from_value_column_impl!(BuildCount, BuildCount, u64);
+from_value_column_impl!(PlayTicks, PlayTicks, u64);
+from_value_column_impl!(VoteCount, VoteCount, u64);
 
 #[async_trait::async_trait]
 impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
