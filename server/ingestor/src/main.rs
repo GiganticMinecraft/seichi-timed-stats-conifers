@@ -14,7 +14,7 @@ async fn stats_repository_impl() -> anyhow::Result<
         + PlayerStatsRepository<VoteCount>,
 > {
     use infra_upstream_repository_impl::{config::GrpcClient, GrpcUpstreamRepository};
-    Ok(GrpcUpstreamRepository::try_new(GrpcClient::from_env()?).await?)
+    GrpcUpstreamRepository::try_new(GrpcClient::from_env()?).await
 }
 
 async fn timed_stats_repository_impl() -> anyhow::Result<
@@ -24,23 +24,21 @@ async fn timed_stats_repository_impl() -> anyhow::Result<
         + PlayerTimedStatsRepository<VoteCount>,
 > {
     use infra_db_repository_impl::{config::Database, DatabaseConnector};
-    Ok(DatabaseConnector::try_new(Database::from_env()?).await?)
+    DatabaseConnector::try_new(Database::from_env()?).await
 }
 
 async fn fetch_and_record<Stats>(
-    stats_repository: &impl PlayerStatsRepository<Stats>,
-    timed_stats_repository: &impl PlayerTimedStatsRepository<Stats>,
+    stats_repository: &(impl PlayerStatsRepository<Stats> + Sync),
+    timed_stats_repository: &(impl PlayerTimedStatsRepository<Stats> + Sync),
 ) -> anyhow::Result<()>
 where
     Stats: Send + 'static,
 {
-    timed_stats_repository
-        .record_snapshot(
-            stats_repository
-                .fetch_stats_snapshot_of_all_players()
-                .await?,
-        )
+    let snapshot = stats_repository
+        .fetch_stats_snapshot_of_all_players()
         .await?;
+
+    timed_stats_repository.record_snapshot(snapshot).await?;
     Ok(())
 }
 

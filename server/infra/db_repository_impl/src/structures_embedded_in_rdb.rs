@@ -199,7 +199,7 @@ fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Clone + Eq>(
             Some(DiffSizeAtParticularDepth {
                 diff_sequence_depth: state.current_diff_sequence_depth,
                 total_diffs_on_current_diff_sequence: state.current_total_diff_size,
-                diffs_from_tip_to_snapshot: state.current_snapshot.size_of_diff_to(&snapshot),
+                diffs_from_tip_to_snapshot: state.current_snapshot.size_of_diff_to(snapshot),
             })
         })
         .min_by_key(loss_function)
@@ -254,7 +254,7 @@ impl<Stats: Clone> IdIndexedDiffPoints<Stats> {
     }
 
     pub fn map_ids_to_diff_points(mut self, ids: &[DiffPointId]) -> Vec<DiffPoint<Stats>> {
-        ids.iter().map(|id| self.0.remove(&id).unwrap()).collect()
+        ids.iter().map(|id| self.0.remove(id).unwrap()).collect()
     }
 
     fn diff_sequence_towards_latest_diff_point(

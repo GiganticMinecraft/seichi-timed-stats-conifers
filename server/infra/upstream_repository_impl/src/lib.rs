@@ -67,7 +67,7 @@ impl PlayerStatsRepository<BreakCount> for GrpcUpstreamRepository {
                             &count.player.ok_or(anyhow!("player_uuid is missing"))?.uuid,
                         )?,
                     },
-                    BreakCount(count.break_count as u64),
+                    BreakCount(count.break_count),
                 ))
             })
             .collect::<Result<HashMap<_, _>, _>>()?;
@@ -99,7 +99,7 @@ impl PlayerStatsRepository<BuildCount> for GrpcUpstreamRepository {
                             &count.player.ok_or(anyhow!("player_uuid is missing"))?.uuid,
                         )?,
                     },
-                    BuildCount(count.build_count as u64),
+                    BuildCount(count.build_count),
                 ))
             })
             .collect::<Result<HashMap<_, _>, _>>()?;
@@ -131,7 +131,7 @@ impl PlayerStatsRepository<PlayTicks> for GrpcUpstreamRepository {
                             &count.player.ok_or(anyhow!("player_uuid is missing"))?.uuid,
                         )?,
                     },
-                    PlayTicks(count.play_ticks as u64),
+                    PlayTicks(count.play_ticks),
                 ))
             })
             .collect::<Result<HashMap<_, _>, _>>()?;
@@ -163,7 +163,7 @@ impl PlayerStatsRepository<VoteCount> for GrpcUpstreamRepository {
                             &count.player.ok_or(anyhow!("player_uuid is missing"))?.uuid,
                         )?,
                     },
-                    VoteCount(count.vote_count as u64),
+                    VoteCount(count.vote_count),
                 ))
             })
             .collect::<Result<HashMap<_, _>, _>>()?;
