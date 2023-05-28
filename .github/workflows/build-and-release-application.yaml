@@ -98,7 +98,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: ./server
-          file: ${{ matrix.dockerfile_relative_to_server }}
+          file: ${{ matrix.dockerfile }}
           builder: ${{ steps.buildx.outputs.name }}
           push: ${{ github.ref == 'refs/heads/master' }}
           tags: ${{ steps.meta.outputs.tags }}
