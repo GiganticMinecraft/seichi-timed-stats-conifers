@@ -9,5 +9,5 @@ infra-upstream-repository-impl = { path = "../infra/upstream_repository_impl" }
 domain = { path = "../domain" }
 
 anyhow = "1.0.71"
-tokio = { version = "1.28.1", features = ["rt-multi-thread", "macros", "signal"] }
+tokio = { version = "1.28.2", features = ["rt-multi-thread", "macros", "signal"] }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
