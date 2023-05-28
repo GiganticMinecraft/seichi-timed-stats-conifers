@@ -5,6 +5,13 @@ use diesel_async::{AsyncConnection, AsyncMysqlConnection};
 use domain::repositories::TimeBasedSnapshotSearchCondition;
 use domain::{models::StatsSnapshot, repositories::PlayerTimedStatsRepository};
 
+use crate::structures_embedded_in_rdb::{
+    choose_base_diff_sequence_for_snapshot_with_heuristics, DiffSequence, DiffSequenceChoice,
+};
+use stats_with_incremental_snapshot_tables::{
+    HasIncrementalSnapshotTables, HasIncrementalSnapshotTablesDefaultMethods,
+};
+
 mod cycle_free_path;
 mod query_utils;
 mod schema;
@@ -15,13 +22,8 @@ pub struct DatabaseConnector {
     pool: Pool<AsyncMysqlConnection>,
 }
 
-use crate::structures_embedded_in_rdb::{
-    choose_base_diff_sequence_for_snapshot_with_heuristics, DiffSequence, DiffSequenceChoice,
-};
-use stats_with_incremental_snapshot_tables::HasIncrementalSnapshotTables;
-
 #[async_trait::async_trait]
-impl<Stats: HasIncrementalSnapshotTables + Clone + Send + 'static> PlayerTimedStatsRepository<Stats>
+impl<Stats: HasIncrementalSnapshotTables + Send + 'static> PlayerTimedStatsRepository<Stats>
     for DatabaseConnector
 {
     async fn record_snapshot(&self, snapshot: StatsSnapshot<Stats>) -> anyhow::Result<()> {

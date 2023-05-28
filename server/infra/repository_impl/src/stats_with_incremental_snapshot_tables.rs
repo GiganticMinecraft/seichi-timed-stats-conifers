@@ -105,7 +105,10 @@ pub trait HasIncrementalSnapshotTables: Sized + Eq + Clone + FromValueColumn {
         timestamp_upper_bound: DateTime<Utc>,
         conn: &mut Conn,
     ) -> anyhow::Result<HashMap<DiffPointId, Option<DiffPointId>>>;
+}
 
+#[async_trait::async_trait]
+pub trait HasIncrementalSnapshotTablesDefaultMethods: HasIncrementalSnapshotTables {
     async fn create_full_snapshot<Conn: AsyncConnection<Backend = Mysql> + Send + 'static>(
         snapshot: StatsSnapshot<Self>,
         conn: &mut Conn,
@@ -269,6 +272,8 @@ pub trait HasIncrementalSnapshotTables: Sized + Eq + Clone + FromValueColumn {
         ))
     }
 }
+
+impl<T: HasIncrementalSnapshotTables> HasIncrementalSnapshotTablesDefaultMethods for T {}
 
 impl FromValueColumn for BreakCount {
     type ValueColumnType = u64;
