@@ -21,7 +21,10 @@ mod structures_embedded_in_rdb;
 pub mod config {
     #[derive(Debug, serde::Deserialize, Clone)]
     pub struct Database {
-        pub db_connection_url: String,
+        pub db_connection_host_and_port: String,
+        pub db_connection_user: String,
+        pub db_connection_password: String,
+        pub db_connection_database: String,
         pub db_connection_pool_size: usize,
     }
 
@@ -39,7 +42,13 @@ pub struct DatabaseConnector {
 impl DatabaseConnector {
     pub async fn try_new(config: config::Database) -> anyhow::Result<Self> {
         let connection_manager =
-            AsyncDieselConnectionManager::<AsyncMysqlConnection>::new(config.db_connection_url);
+            AsyncDieselConnectionManager::<AsyncMysqlConnection>::new(format!(
+                "mysql://{}:{}@{}/{}",
+                config.db_connection_user,
+                config.db_connection_password,
+                config.db_connection_host_and_port,
+                config.db_connection_database
+            ));
 
         let pool = Pool::builder(connection_manager)
             .max_size(config.db_connection_pool_size)
