@@ -42,8 +42,27 @@ where
     Ok(())
 }
 
+use crate::config::ENV;
+
+mod config;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // setup sentry
+    if ENV.name != "local" {
+        let _guard = sentry::init((
+            "https://20ce98e4b5304846be70f3bd78a6a588@sentry.onp.admin.seichi.click/9",
+            sentry::ClientOptions {
+                release: sentry::release_name!(),
+                traces_sample_rate: 0.25,
+                environment: Some(ENV.name.to_owned().into()),
+                ..Default::default()
+            },
+        ));
+
+        sentry::configure_scope(|scope| scope.set_level(Some(sentry::Level::Warning)));
+    }
+
     // initialize tracing
     // see https://github.com/tokio-rs/axum/blob/79a0a54bc9f0f585c974b5e6793541baff980662/examples/tracing-aka-logging/src/main.rs
     tracing_subscriber::registry()
