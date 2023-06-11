@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "https://20ce98e4b5304846be70f3bd78a6a588@sentry.onp.admin.seichi.click/9",
             sentry::ClientOptions {
                 release: sentry::release_name!(),
-                traces_sample_rate: 0.25,
+                traces_sample_rate: 0.1,
                 environment: Some(ENV.name.to_owned().into()),
                 ..Default::default()
             },
