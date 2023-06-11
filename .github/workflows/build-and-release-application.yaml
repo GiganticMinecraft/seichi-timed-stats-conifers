@@ -61,6 +61,9 @@ jobs:
           - component_name: ingestor
             image_name: ghcr.io/giganticminecraft/seichi-timed-stats-conifers-ingestor
             dockerfile: ./server/Dockerfile-ingestor
+          - component_name: database-migration
+            image_name: ghcr.io/giganticminecraft/seichi-timed-stats-conifers-database-migration
+            dockerfile: ./server/Dockerfile-database-migration
 
     name: Build server docker image (and publish on master) for ${{ matrix.component_name }}
     needs: [ lint-and-test ]

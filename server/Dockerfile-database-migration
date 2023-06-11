@@ -1,0 +1,17 @@
+# syntax=docker/dockerfile:1.5
+FROM rust:1.70.0-slim-bookworm
+WORKDIR /app
+RUN apt-get update && \
+    apt-get install -y libmysqlclient-dev && \
+    rm -rf /var/lib/apt/lists/* && \
+    cargo install diesel_cli --no-default-features --features mysql
+
+COPY --link . .
+
+# DB の接続情報を含んだ環境変数
+ENV DB_HOST_AND_PORT=""
+ENV DB_USER=""
+ENV DB_PASSWORD=""
+ENV DB_DATABASE_NAME=""
+
+ENTRYPOINT ["bash", "-c", "diesel migration run --database-url=mysql://$DB_USER:$DB_PASSWORD@$DB_HOST_AND_PORT/$DB_DATABASE_NAME"]
