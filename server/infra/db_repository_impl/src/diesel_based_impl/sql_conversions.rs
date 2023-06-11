@@ -1,5 +1,5 @@
 use crate::structures_embedded_in_rdb::DiffPointId;
-use diesel::backend::{Backend, RawValue};
+use diesel::backend::Backend;
 use diesel::deserialize::FromSql;
 use diesel::serialize::ToSql;
 use diesel::sql_types::BigInt;
@@ -21,7 +21,7 @@ impl<B: Backend> FromSql<Unsigned<BigInt>, B> for DiffPointId
 where
     u64: FromSql<Unsigned<BigInt>, B>,
 {
-    fn from_sql(bytes: RawValue<'_, B>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: <B as Backend>::RawValue<'_>) -> diesel::deserialize::Result<Self> {
         <u64 as FromSql<Unsigned<BigInt>, B>>::from_sql(bytes).map(DiffPointId)
     }
 }
