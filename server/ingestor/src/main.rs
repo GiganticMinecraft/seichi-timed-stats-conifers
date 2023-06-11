@@ -2,6 +2,8 @@
 #![warn(clippy::nursery, clippy::pedantic)]
 #![allow(clippy::cargo_common_metadata)]
 
+mod config;
+
 use domain::models::{BreakCount, BuildCount, PlayTicks, VoteCount};
 use domain::repositories::{PlayerStatsRepository, PlayerTimedStatsRepository};
 use tracing_subscriber::layer::SubscriberExt;
@@ -43,8 +45,6 @@ where
 }
 
 use crate::config::SENTRY_CONFIG;
-
-mod config;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
