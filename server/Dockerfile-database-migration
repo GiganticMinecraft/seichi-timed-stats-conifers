@@ -1,7 +1,10 @@
 # syntax=docker/dockerfile:1.5
 FROM rust:1.70.0-slim-bookworm
 WORKDIR /app
-RUN cargo install diesel_cli --no-default-features --features mysql
+RUN apt-get update && \
+    apt-get install -y default-libmysqlclient-dev && \
+    rm -rf /var/lib/apt/lists/* && \
+    cargo install diesel_cli --no-default-features --features mysql
 
 COPY --link . .
 
