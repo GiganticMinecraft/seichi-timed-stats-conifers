@@ -89,10 +89,13 @@ macro_rules! impl_has_incremental_snapshot_tables {
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
-                diesel::insert_into(dsl::$full_snapshot_dsl_table)
-                    .values(records_to_insert)
-                    .execute(conn)
-                    .await?;
+                // プレースホルダー数が 65536 を超えないように 20000 件ずつに分割する
+                for records in records_to_insert.chunks(20000) {
+                    diesel::insert_into(dsl::$full_snapshot_dsl_table)
+                        .values(records)
+                        .execute(conn)
+                        .await?;
+                }
 
                 Ok(())
             }
@@ -142,10 +145,13 @@ macro_rules! impl_has_incremental_snapshot_tables {
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
-                diesel::insert_into(dsl::$diff_table)
-                    .values(records_to_insert)
-                    .execute(conn)
-                    .await?;
+                // プレースホルダー数が 65536 を超えないように 20000 件ずつに分割する
+                for records in records_to_insert.chunks(20000) {
+                    diesel::insert_into(dsl::$diff_table)
+                        .values(records)
+                        .execute(conn)
+                        .await?;
+                }
 
                 Ok(())
             }
