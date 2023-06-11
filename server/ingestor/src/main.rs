@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             sentry::ClientOptions {
                 release: sentry::release_name!(),
                 traces_sample_rate: 0.1,
-                environment: Some(SENTRY_CONFIG.environment_name.to_owned().into()),
+                environment: Some(SENTRY_CONFIG.environment_name.clone().into()),
                 ..Default::default()
             },
         ));
