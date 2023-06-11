@@ -42,7 +42,7 @@ where
     Ok(())
 }
 
-use crate::config::ENV;
+use crate::config::SENTRY_CONFIG;
 
 mod config;
 
@@ -50,13 +50,13 @@ mod config;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // setup sentry
     // only send sentry events when it's not running locally
-    if ENV.name != "local" {
+    if SENTRY_CONFIG.environment_name != "local" {
         let _guard = sentry::init((
             "https://20ce98e4b5304846be70f3bd78a6a588@sentry.onp.admin.seichi.click/9",
             sentry::ClientOptions {
                 release: sentry::release_name!(),
                 traces_sample_rate: 0.1,
-                environment: Some(ENV.name.to_owned().into()),
+                environment: Some(SENTRY_CONFIG.environment_name.to_owned().into()),
                 ..Default::default()
             },
         ));
