@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 
 #[derive(serde::Deserialize, Debug)]
-pub struct Env {
+pub struct Sentry {
     pub environment_name: String,
 }
 
