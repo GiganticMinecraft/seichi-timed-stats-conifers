@@ -5,4 +5,4 @@ pub struct Env {
     pub environment_name: String,
 }
 
-pub static ENV: Lazy<Env> = Lazy::new(|| envy::prefixed("ENV_").from_env::<Env>().unwrap());
+pub static SENTRY_CONFIG: Lazy<Sentry> = Lazy::new(|| envy::prefixed("SENTRY_").from_env::<Sentry>().unwrap());
