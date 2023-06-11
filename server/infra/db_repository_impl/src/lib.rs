@@ -64,12 +64,12 @@ impl<Stats: HasIncrementalSnapshotTables<Object<AsyncMysqlConnection>> + Send + 
 {
     async fn record_snapshot(&self, snapshot: StatsSnapshot<Stats>) -> anyhow::Result<()> {
         let mut conn = self.pool.get().await?;
+        sql_query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+            .execute(&mut conn)
+            .await?;
+
         conn.transaction(|conn| {
             async move {
-                sql_query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
-                    .execute(conn)
-                    .await?;
-
                 if let Some(full_snapshot) =
                     Stats::find_latest_full_snapshot_before(snapshot.utc_timestamp, conn).await?
                 {
