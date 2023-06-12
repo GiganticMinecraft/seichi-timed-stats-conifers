@@ -74,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // setup sentry
     // only send sentry events when it's not running locally
-    if SENTRY_CONFIG.environment_name != "local" {
+    let _guard = if SENTRY_CONFIG.environment_name != "local" {
         let _guard = sentry::init((
             "https://20ce98e4b5304846be70f3bd78a6a588@sentry.onp.admin.seichi.click/9",
             sentry::ClientOptions {
@@ -88,7 +88,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
 
         sentry::configure_scope(|scope| scope.set_level(Some(sentry::Level::Warning)));
-    }
+
+        Some(_guard)
+    } else {
+        None
+    };
 
     fetch_and_record_all().await?;
 
