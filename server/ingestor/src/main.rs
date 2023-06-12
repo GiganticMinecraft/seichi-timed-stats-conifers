@@ -96,6 +96,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     fetch_and_record_all().await?;
 
-    // Sentry should capture this
-    panic!("Everything is on fire!");
+    Ok(())
 }
