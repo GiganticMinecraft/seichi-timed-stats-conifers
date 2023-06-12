@@ -46,7 +46,7 @@ where
 }
 
 #[tracing::instrument]
-async fn fetch_and_record_all() {
+async fn fetch_and_record_all() -> anyhow::Result<()> {
     let stats_repository = stats_repository_impl().await?;
     let timed_stats_repository = timed_stats_repository_impl().await?;
 
@@ -54,6 +54,8 @@ async fn fetch_and_record_all() {
     fetch_and_record::<BuildCount>(&stats_repository, &timed_stats_repository).await?;
     fetch_and_record::<PlayTicks>(&stats_repository, &timed_stats_repository).await?;
     fetch_and_record::<VoteCount>(&stats_repository, &timed_stats_repository).await?;
+
+    Ok(())
 }
 
 use crate::config::SENTRY_CONFIG;
@@ -88,7 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sentry::configure_scope(|scope| scope.set_level(Some(sentry::Level::Warning)));
     }
 
-    fetch_and_record_all().await;
+    fetch_and_record_all().await?;
 
     Ok(())
 }
