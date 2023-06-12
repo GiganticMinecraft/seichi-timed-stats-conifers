@@ -2470,7 +2470,6 @@ dependencies = [
  "infra-upstream-repository-impl",
  "once_cell",
  "sentry",
- "sentry-tracing",
  "serde",
  "tokio",
  "tracing-subscriber",

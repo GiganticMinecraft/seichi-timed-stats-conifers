@@ -48,6 +48,16 @@ use crate::config::SENTRY_CONFIG;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // initialize tracing
+    // see https://github.com/tokio-rs/axum/blob/79a0a54bc9f0f585c974b5e6793541baff980662/examples/tracing-aka-logging/src/main.rs
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::new(
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+        ))
+        .with(tracing_subscriber::fmt::layer())
+        .with(sentry::integrations::tracing::layer())
+        .init();
+
     // setup sentry
     // only send sentry events when it's not running locally
     if SENTRY_CONFIG.environment_name != "local" {
@@ -65,16 +75,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         sentry::configure_scope(|scope| scope.set_level(Some(sentry::Level::Warning)));
     }
-
-    // initialize tracing
-    // see https://github.com/tokio-rs/axum/blob/79a0a54bc9f0f585c974b5e6793541baff980662/examples/tracing-aka-logging/src/main.rs
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
-        ))
-        .with(tracing_subscriber::fmt::layer())
-        .with(sentry_tracing::layer())
-        .init();
 
     let stats_repository = stats_repository_impl().await?;
     let timed_stats_repository = timed_stats_repository_impl().await?;
