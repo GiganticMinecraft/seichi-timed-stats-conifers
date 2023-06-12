@@ -76,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // only send sentry events when it's not running locally
     let _guard = if SENTRY_CONFIG.environment_name != "local" {
         let _guard = sentry::init((
-            "https://20ce98e4b5304846be70f3bd78a6a588@sentry.onp.admin.seichi.click/9",
+            "https://20ce98e4b5304846be70f3bd78a6a588:2cfe5fb8288c4635bb84630b41d21bf2@sentry.onp.admin.seichi.click/9",
             sentry::ClientOptions {
                 release: sentry::release_name!(),
                 traces_sample_rate: 1.0,
