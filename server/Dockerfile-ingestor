@@ -30,4 +30,4 @@ FROM gcr.io/distroless/cc
 LABEL org.opencontainers.image.source=https://github.com/GiganticMinecraft/seichi-timed-stats-conifers
 COPY --from=build-env --link /app/target/release/seichi-timed-stats-conifers-ingestor /
 COPY --from=debian:bullseye /lib/x86_64-linux-gnu/libz.so.1 /lib/x86_64-linux-gnu/libz.so.1
-CMD ["./seichi-timed-stats-conifers"]
+CMD ["./seichi-timed-stats-conifers-ingestor"]
