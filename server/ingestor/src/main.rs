@@ -29,6 +29,7 @@ async fn timed_stats_repository_impl() -> anyhow::Result<
     DatabaseConnector::try_new(Database::from_env()?).await
 }
 
+#[tracing::instrument(skip(stats_repository, timed_stats_repository))]
 async fn fetch_and_record<Stats>(
     stats_repository: &(impl PlayerStatsRepository<Stats> + Sync),
     timed_stats_repository: &(impl PlayerTimedStatsRepository<Stats> + Sync),
@@ -42,6 +43,17 @@ where
 
     timed_stats_repository.record_snapshot(snapshot).await?;
     Ok(())
+}
+
+#[tracing::instrument]
+async fn fetch_and_record_all() {
+    let stats_repository = stats_repository_impl().await?;
+    let timed_stats_repository = timed_stats_repository_impl().await?;
+
+    fetch_and_record::<BreakCount>(&stats_repository, &timed_stats_repository).await?;
+    fetch_and_record::<BuildCount>(&stats_repository, &timed_stats_repository).await?;
+    fetch_and_record::<PlayTicks>(&stats_repository, &timed_stats_repository).await?;
+    fetch_and_record::<VoteCount>(&stats_repository, &timed_stats_repository).await?;
 }
 
 use crate::config::SENTRY_CONFIG;
@@ -76,13 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sentry::configure_scope(|scope| scope.set_level(Some(sentry::Level::Warning)));
     }
 
-    let stats_repository = stats_repository_impl().await?;
-    let timed_stats_repository = timed_stats_repository_impl().await?;
-
-    fetch_and_record::<BreakCount>(&stats_repository, &timed_stats_repository).await?;
-    fetch_and_record::<BuildCount>(&stats_repository, &timed_stats_repository).await?;
-    fetch_and_record::<PlayTicks>(&stats_repository, &timed_stats_repository).await?;
-    fetch_and_record::<VoteCount>(&stats_repository, &timed_stats_repository).await?;
+    fetch_and_record_all().await;
 
     Ok(())
 }
