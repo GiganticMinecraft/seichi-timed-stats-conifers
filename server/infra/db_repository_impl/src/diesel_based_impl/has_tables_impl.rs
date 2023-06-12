@@ -52,6 +52,7 @@ macro_rules! impl_has_incremental_snapshot_tables {
         impl<Connection: AsyncConnection<Backend = Mysql> + Send + 'static>
             HasIncrementalSnapshotTables<Connection> for $stats_type
         {
+            #[tracing::instrument(skip(conn))]
             async fn create_full_snapshot_point(conn: &mut Connection) -> anyhow::Result<u64> {
                 {
                     use schema::$full_snapshot_point_table::dsl;
@@ -72,6 +73,7 @@ macro_rules! impl_has_incremental_snapshot_tables {
                 Ok(created_full_snapshot_point_id)
             }
 
+            #[tracing::instrument(skip(conn, player_stats))]
             async fn insert_all_stats_at_full_snapshot_point(
                 fresh_full_snapshot_point_id: u64,
                 player_stats: HashMap<Player, Self>,
@@ -100,6 +102,7 @@ macro_rules! impl_has_incremental_snapshot_tables {
                 Ok(())
             }
 
+            #[tracing::instrument(skip(conn))]
             async fn create_diff_snapshot_point(
                 base_full_snapshot_point_id: u64,
                 previous_diff_point_id: Option<DiffPointId>,
@@ -128,6 +131,7 @@ macro_rules! impl_has_incremental_snapshot_tables {
                 Ok(DiffPointId(created_diff_snapshot_point_id))
             }
 
+            #[tracing::instrument(skip(conn, player_stats_diffs))]
             async fn insert_all_stats_at_diff_snapshot_point(
                 fresh_diff_snapshot_point_id: DiffPointId,
                 player_stats_diffs: HashMap<PlayerUuidString, Self>,
@@ -156,6 +160,7 @@ macro_rules! impl_has_incremental_snapshot_tables {
                 Ok(())
             }
 
+            #[tracing::instrument(skip(conn))]
             async fn read_full_snapshot_point(
                 full_snapshot_point_id: u64,
                 conn: &mut Connection,
@@ -195,6 +200,7 @@ macro_rules! impl_has_incremental_snapshot_tables {
                 })
             }
 
+            #[tracing::instrument(skip(conn))]
             async fn read_diff_snapshot_points(
                 diff_snapshot_point_ids: HashSet<DiffPointId>,
                 conn: &mut Connection,
@@ -270,6 +276,7 @@ macro_rules! impl_has_incremental_snapshot_tables {
                 ))
             }
 
+            #[tracing::instrument(skip(conn))]
             async fn read_diff_snapshot_points_over_full_point(
                 full_snapshot_point_id: u64,
                 conn: &mut Connection,
@@ -288,6 +295,7 @@ macro_rules! impl_has_incremental_snapshot_tables {
                 )
             }
 
+            #[tracing::instrument(skip(conn))]
             async fn find_id_and_timestamp_of_full_snapshot_point_with_condition(
                 time_based_condition: TimeBasedSnapshotSearchCondition,
                 conn: &mut Connection,
@@ -309,6 +317,7 @@ macro_rules! impl_has_incremental_snapshot_tables {
                 }
             }
 
+            #[tracing::instrument(skip(conn))]
             async fn find_id_and_timestamp_of_diff_snapshot_point_with_condition(
                 time_based_condition: TimeBasedSnapshotSearchCondition,
                 conn: &mut Connection,
@@ -330,6 +339,7 @@ macro_rules! impl_has_incremental_snapshot_tables {
                 }
             }
 
+            #[tracing::instrument(skip(conn))]
             async fn find_id_of_latest_full_snapshot_before(
                 timestamp: DateTime<Utc>,
                 conn: &mut Connection,
@@ -343,6 +353,7 @@ macro_rules! impl_has_incremental_snapshot_tables {
                     .await?)
             }
 
+            #[tracing::instrument(skip(conn))]
             async fn id_of_root_full_snapshot_of_diff_point(
                 diff_point_id: DiffPointId,
                 conn: &mut Connection,
@@ -355,6 +366,7 @@ macro_rules! impl_has_incremental_snapshot_tables {
                     .await?)
             }
 
+            #[tracing::instrument(skip(conn))]
             async fn diff_point_id_to_previous_diff_point_id(
                 forest_base_full_snapshot_point_id: u64,
                 timestamp_upper_bound: DateTime<Utc>,

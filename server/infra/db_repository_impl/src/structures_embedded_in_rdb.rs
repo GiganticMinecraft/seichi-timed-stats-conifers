@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 
 use chrono::{DateTime, Utc};
 use domain::models::{Player, PlayerUuidString, StatsSnapshot};
 use ordered_float::OrderedFloat;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FullSnapshotPoint<Stats> {
     pub id: u64,
     pub full_snapshot: StatsSnapshot<Stats>,
@@ -13,6 +14,18 @@ pub struct FullSnapshotPoint<Stats> {
 pub struct SnapshotDiff<Stats> {
     pub utc_timestamp: DateTime<Utc>,
     pub player_stats_diffs: HashMap<PlayerUuidString, Stats>,
+}
+
+impl<Stats: Debug> Debug for SnapshotDiff<Stats> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SnapshotDiff")
+            .field("utc_timestamp", &self.utc_timestamp)
+            .field(
+                "player_stats_diffs",
+                &format!("map with count = {}", &self.player_stats_diffs.len()),
+            )
+            .finish()
+    }
 }
 
 impl<Stats: Clone> SnapshotDiff<Stats> {
@@ -81,17 +94,20 @@ impl<Stats: Eq + Clone> ComputeDiff for StatsSnapshot<Stats> {
 #[diesel(sql_type = diesel::sql_types::Unsigned<diesel::sql_types::BigInt>)]
 pub struct DiffPointId(pub u64);
 
+#[derive(Debug)]
 pub struct DiffPoint<Stats> {
     pub id: DiffPointId,
     pub previous_diff_point_id: Option<DiffPointId>,
     pub diff: SnapshotDiff<Stats>,
 }
 
+#[derive(Debug)]
 pub enum SnapshotPoint<Stats> {
     Full(FullSnapshotPoint<Stats>),
     Diff(DiffPoint<Stats>),
 }
 
+#[derive(Debug)]
 pub struct DiffSequence<Stats> {
     pub base_point: FullSnapshotPoint<Stats>,
     pub diff_points: Vec<DiffPoint<Stats>>,
@@ -134,7 +150,8 @@ pub enum DiffSequenceChoice<Stats> {
     NoAppropriatePointFound,
 }
 
-fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Clone + Eq>(
+#[tracing::instrument]
+fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Debug + Clone + Eq>(
     sequence: DiffSequence<Stats>,
     snapshot: &StatsSnapshot<Stats>,
 ) -> DiffSequence<Stats> {
@@ -214,6 +231,7 @@ fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Clone + Eq>(
     }
 }
 
+#[derive(Debug)]
 pub struct IdIndexedDiffPoints<Stats>(HashMap<DiffPointId, DiffPoint<Stats>>);
 
 impl<Stats: Clone> IdIndexedDiffPoints<Stats> {
@@ -279,7 +297,8 @@ impl<Stats: Clone> IdIndexedDiffPoints<Stats> {
     }
 }
 
-pub fn choose_base_diff_sequence_for_snapshot_with_heuristics<Stats: Clone + Eq>(
+#[tracing::instrument]
+pub fn choose_base_diff_sequence_for_snapshot_with_heuristics<Stats: Debug + Clone + Eq>(
     base_point: FullSnapshotPoint<Stats>,
     all_diff_points_over_base_point: IdIndexedDiffPoints<Stats>,
     snapshot: &StatsSnapshot<Stats>,

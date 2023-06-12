@@ -5,6 +5,7 @@ use diesel_async::{scoped_futures::ScopedFutureExt, RunQueryDsl};
 use diesel_async::{AsyncConnection, AsyncMysqlConnection};
 use domain::repositories::TimeBasedSnapshotSearchCondition;
 use domain::{models::StatsSnapshot, repositories::PlayerTimedStatsRepository};
+use std::fmt::Debug;
 
 use crate::structures_embedded_in_rdb::{
     choose_base_diff_sequence_for_snapshot_with_heuristics, DiffSequence, DiffSequenceChoice,
@@ -59,9 +60,11 @@ impl DatabaseConnector {
 }
 
 #[async_trait::async_trait]
-impl<Stats: HasIncrementalSnapshotTables<Object<AsyncMysqlConnection>> + Send + 'static>
-    PlayerTimedStatsRepository<Stats> for DatabaseConnector
+impl<
+        Stats: Debug + HasIncrementalSnapshotTables<Object<AsyncMysqlConnection>> + Send + 'static,
+    > PlayerTimedStatsRepository<Stats> for DatabaseConnector
 {
+    #[tracing::instrument(skip(self))]
     async fn record_snapshot(&self, snapshot: StatsSnapshot<Stats>) -> anyhow::Result<()> {
         let mut conn = self.pool.get().await?;
         sql_query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
@@ -101,6 +104,7 @@ impl<Stats: HasIncrementalSnapshotTables<Object<AsyncMysqlConnection>> + Send + 
         .await
     }
 
+    #[tracing::instrument(skip(self))]
     async fn search_snapshot(
         &self,
         condition: TimeBasedSnapshotSearchCondition,

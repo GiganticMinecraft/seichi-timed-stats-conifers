@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 
 use crate::cycle_free_path::construct_cycle_free_path;
 use crate::structures_embedded_in_rdb::{
@@ -78,8 +79,9 @@ pub trait HasIncrementalSnapshotTables<DBConnection>: Sized + Eq + Clone {
 
 #[async_trait::async_trait]
 pub trait HasIncrementalSnapshotTablesDefaultMethods<DBConnection: Send>:
-    HasIncrementalSnapshotTables<DBConnection>
+    HasIncrementalSnapshotTables<DBConnection> + Debug
 {
+    #[tracing::instrument(skip(conn))]
     async fn create_full_snapshot(
         snapshot: StatsSnapshot<Self>,
         conn: &mut DBConnection,
@@ -94,6 +96,7 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods<DBConnection: Send>:
         .await
     }
 
+    #[tracing::instrument(skip(conn))]
     async fn find_latest_full_snapshot_before(
         timestamp: DateTime<Utc>,
         conn: &mut DBConnection,
@@ -106,6 +109,7 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods<DBConnection: Send>:
         }
     }
 
+    #[tracing::instrument(skip(conn))]
     async fn find_snapshot_point_with_condition(
         time_based_condition: TimeBasedSnapshotSearchCondition,
         conn: &mut DBConnection,
@@ -156,6 +160,7 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods<DBConnection: Send>:
         }
     }
 
+    #[tracing::instrument(skip(conn))]
     async fn create_diff_snapshot_point_on(
         diff_sequence: DiffSequence<Self>,
         snapshot: StatsSnapshot<Self>,
@@ -181,6 +186,7 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods<DBConnection: Send>:
         .await
     }
 
+    #[tracing::instrument(skip(conn))]
     async fn construct_diff_sequence_leading_up_to(
         snapshot_point: SnapshotPoint<Self>,
         conn: &mut DBConnection,
@@ -195,6 +201,7 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods<DBConnection: Send>:
         }
     }
 
+    #[tracing::instrument(skip(conn))]
     async fn construct_diff_sequence_leading_up_to_diff_point(
         diff_point: DiffPoint<Self>,
         conn: &mut DBConnection,
@@ -234,7 +241,7 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods<DBConnection: Send>:
     }
 }
 
-impl<T: HasIncrementalSnapshotTables<DBConnection>, DBConnection: Send>
+impl<T: Debug + HasIncrementalSnapshotTables<DBConnection>, DBConnection: Send>
     HasIncrementalSnapshotTablesDefaultMethods<DBConnection> for T
 {
 }
