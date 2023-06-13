@@ -11,6 +11,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::Layer;
 
 async fn stats_repository_impl() -> anyhow::Result<
     impl PlayerStatsRepository<BreakCount>
@@ -67,11 +68,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // initialize tracing
     // see https://github.com/tokio-rs/axum/blob/79a0a54bc9f0f585c974b5e6793541baff980662/examples/tracing-aka-logging/src/main.rs
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
-        ))
-        .with(tracing_subscriber::fmt::layer())
         .with(sentry::integrations::tracing::layer())
+        .with(
+            tracing_subscriber::fmt::layer().with_filter(tracing_subscriber::EnvFilter::new(
+                std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+            )),
+        )
         .init();
 
     // setup sentry
@@ -94,8 +96,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Transaction can be started by providing the name and the operation
-    let tx_ctx = sentry::TransactionContext::new("test transaction", "test operation");
+    let tx_ctx = sentry::TransactionContext::new("Ingestion batch", "Ingest upstream data to TSDB");
     let transaction = sentry::start_transaction(tx_ctx);
+    // sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
 
     fetch_and_record_all().await?;
 
