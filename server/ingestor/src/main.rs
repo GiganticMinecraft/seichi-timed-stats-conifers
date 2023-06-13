@@ -6,6 +6,8 @@ mod config;
 
 use domain::models::{BreakCount, BuildCount, PlayTicks, VoteCount};
 use domain::repositories::{PlayerStatsRepository, PlayerTimedStatsRepository};
+use std::time::Duration;
+use tokio::time::sleep;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -75,7 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // setup sentry
     // only send sentry events when it's not running locally
     let _guard = if SENTRY_CONFIG.environment_name != "local" {
-        let _guard = sentry::init((
+        Some(sentry::init((
             "https://20ce98e4b5304846be70f3bd78a6a588:2cfe5fb8288c4635bb84630b41d21bf2@sentry.onp.admin.seichi.click/9",
             sentry::ClientOptions {
                 release: sentry::release_name!(),
@@ -83,18 +85,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 enable_profiling: true,
                 profiles_sample_rate: 1.0,
                 environment: Some(SENTRY_CONFIG.environment_name.clone().into()),
+                shutdown_timeout: Duration::from_secs(10),
                 ..Default::default()
             },
-        ));
-
-        sentry::configure_scope(|scope| scope.set_level(Some(sentry::Level::Warning)));
-
-        Some(_guard)
+        )))
     } else {
         None
     };
 
+    // Transaction can be started by providing the name and the operation
+    let tx_ctx = sentry::TransactionContext::new("test transaction", "test operation");
+    let transaction = sentry::start_transaction(tx_ctx);
+
     fetch_and_record_all().await?;
+
+    transaction.finish(); // Finishing the transaction will send it to Sentry
+
+    drop(_guard);
+
+    sleep(Duration::from_secs(10)).await;
 
     Ok(())
 }
