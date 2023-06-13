@@ -6,6 +6,7 @@ mod config;
 
 use domain::models::{BreakCount, BuildCount, PlayTicks, VoteCount};
 use domain::repositories::{PlayerStatsRepository, PlayerTimedStatsRepository};
+use infra_upstream_repository_impl::MockStatsRepository;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing_subscriber::layer::SubscriberExt;
@@ -17,8 +18,7 @@ async fn stats_repository_impl() -> anyhow::Result<
         + PlayerStatsRepository<PlayTicks>
         + PlayerStatsRepository<VoteCount>,
 > {
-    use infra_upstream_repository_impl::{config::GrpcClient, GrpcUpstreamRepository};
-    GrpcUpstreamRepository::try_new(GrpcClient::from_env()?).await
+    Ok(MockStatsRepository)
 }
 
 async fn timed_stats_repository_impl() -> anyhow::Result<
