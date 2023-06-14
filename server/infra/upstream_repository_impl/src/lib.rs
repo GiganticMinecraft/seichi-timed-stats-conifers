@@ -1,3 +1,13 @@
+use std::collections::HashMap;
+
+use anyhow::anyhow;
+
+use buf_generated::gigantic_minecraft::seichi_game_data::v1::read_service_client::ReadServiceClient;
+use domain::models::{
+    BreakCount, BuildCount, PlayTicks, Player, PlayerUuidString, StatsSnapshot, VoteCount,
+};
+use domain::repositories::PlayerStatsRepository;
+
 #[allow(dead_code)]
 #[allow(clippy::nursery, clippy::pedantic, clippy::all)]
 mod buf_generated {
@@ -17,103 +27,6 @@ pub mod config {
     }
 }
 
-pub struct MockStatsRepository;
-
-#[async_trait::async_trait]
-impl PlayerStatsRepository<BreakCount> for MockStatsRepository {
-    async fn fetch_stats_snapshot_of_all_players(
-        &self,
-    ) -> anyhow::Result<StatsSnapshot<BreakCount>> {
-        let mut player_stats = HashMap::new();
-
-        player_stats.insert(
-            Player {
-                uuid: PlayerUuidString::from_string(
-                    &"00000000-0000-0000-0000-000000000000".to_string(),
-                )?,
-            },
-            BreakCount(10),
-        );
-
-        Ok(StatsSnapshot {
-            player_stats,
-            utc_timestamp: chrono::Utc::now(),
-        })
-    }
-}
-
-#[async_trait::async_trait]
-impl PlayerStatsRepository<BuildCount> for MockStatsRepository {
-    async fn fetch_stats_snapshot_of_all_players(
-        &self,
-    ) -> anyhow::Result<StatsSnapshot<BuildCount>> {
-        let mut player_stats = HashMap::new();
-
-        player_stats.insert(
-            Player {
-                uuid: PlayerUuidString::from_string(
-                    &"00000000-0000-0000-0000-000000000000".to_string(),
-                )?,
-            },
-            BuildCount(10),
-        );
-
-        Ok(StatsSnapshot {
-            player_stats,
-            utc_timestamp: chrono::Utc::now(),
-        })
-    }
-}
-
-#[async_trait::async_trait]
-impl PlayerStatsRepository<PlayTicks> for MockStatsRepository {
-    async fn fetch_stats_snapshot_of_all_players(
-        &self,
-    ) -> anyhow::Result<StatsSnapshot<PlayTicks>> {
-        let mut player_stats = HashMap::new();
-
-        player_stats.insert(
-            Player {
-                uuid: PlayerUuidString::from_string(
-                    &"00000000-0000-0000-0000-000000000000".to_string(),
-                )?,
-            },
-            PlayTicks(10),
-        );
-
-        Ok(StatsSnapshot {
-            player_stats,
-            utc_timestamp: chrono::Utc::now(),
-        })
-    }
-}
-
-#[async_trait::async_trait]
-impl PlayerStatsRepository<VoteCount> for MockStatsRepository {
-    async fn fetch_stats_snapshot_of_all_players(
-        &self,
-    ) -> anyhow::Result<StatsSnapshot<VoteCount>> {
-        let mut player_stats = HashMap::new();
-
-        player_stats.insert(
-            Player {
-                uuid: PlayerUuidString::from_string(
-                    &"00000000-0000-0000-0000-000000000000".to_string(),
-                )?,
-            },
-            VoteCount(10),
-        );
-
-        Ok(StatsSnapshot {
-            player_stats,
-            utc_timestamp: chrono::Utc::now(),
-        })
-    }
-}
-
-use anyhow::anyhow;
-use buf_generated::gigantic_minecraft::seichi_game_data::v1::read_service_client::ReadServiceClient;
-use std::collections::HashMap;
 type GameDataGrpcClient = ReadServiceClient<tonic::transport::Channel>;
 
 #[derive(Debug)]
@@ -135,11 +48,6 @@ impl GrpcUpstreamRepository {
 fn empty_request() -> tonic::Request<pbjson_types::Empty> {
     tonic::Request::new(pbjson_types::Empty::default())
 }
-
-use domain::models::{
-    BreakCount, BuildCount, PlayTicks, Player, PlayerUuidString, StatsSnapshot, VoteCount,
-};
-use domain::repositories::PlayerStatsRepository;
 
 #[async_trait::async_trait]
 impl PlayerStatsRepository<BreakCount> for GrpcUpstreamRepository {

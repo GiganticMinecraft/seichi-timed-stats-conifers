@@ -11,7 +11,6 @@ use tracing_subscriber::Layer;
 
 use domain::models::{BreakCount, BuildCount, PlayTicks, VoteCount};
 use domain::repositories::{PlayerStatsRepository, PlayerTimedStatsRepository};
-use infra_upstream_repository_impl::MockStatsRepository;
 
 use crate::config::SENTRY_CONFIG;
 
@@ -23,7 +22,8 @@ async fn stats_repository_impl() -> anyhow::Result<
         + PlayerStatsRepository<PlayTicks>
         + PlayerStatsRepository<VoteCount>,
 > {
-    Ok(MockStatsRepository)
+    use infra_upstream_repository_impl::{config::GrpcClient, GrpcUpstreamRepository};
+    GrpcUpstreamRepository::try_new(GrpcClient::from_env()?).await
 }
 
 async fn timed_stats_repository_impl() -> anyhow::Result<
