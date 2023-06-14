@@ -1,3 +1,13 @@
+use std::collections::HashMap;
+
+use anyhow::anyhow;
+
+use buf_generated::gigantic_minecraft::seichi_game_data::v1::read_service_client::ReadServiceClient;
+use domain::models::{
+    BreakCount, BuildCount, PlayTicks, Player, PlayerUuidString, StatsSnapshot, VoteCount,
+};
+use domain::repositories::PlayerStatsRepository;
+
 #[allow(dead_code)]
 #[allow(clippy::nursery, clippy::pedantic, clippy::all)]
 mod buf_generated {
@@ -17,9 +27,6 @@ pub mod config {
     }
 }
 
-use anyhow::anyhow;
-use buf_generated::gigantic_minecraft::seichi_game_data::v1::read_service_client::ReadServiceClient;
-use std::collections::HashMap;
 type GameDataGrpcClient = ReadServiceClient<tonic::transport::Channel>;
 
 #[derive(Debug)]
@@ -41,11 +48,6 @@ impl GrpcUpstreamRepository {
 fn empty_request() -> tonic::Request<pbjson_types::Empty> {
     tonic::Request::new(pbjson_types::Empty::default())
 }
-
-use domain::models::{
-    BreakCount, BuildCount, PlayTicks, Player, PlayerUuidString, StatsSnapshot, VoteCount,
-};
-use domain::repositories::PlayerStatsRepository;
 
 #[async_trait::async_trait]
 impl PlayerStatsRepository<BreakCount> for GrpcUpstreamRepository {

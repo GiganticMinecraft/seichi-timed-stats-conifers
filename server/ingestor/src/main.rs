@@ -2,12 +2,19 @@
 #![warn(clippy::nursery, clippy::pedantic)]
 #![allow(clippy::cargo_common_metadata)]
 
-mod config;
+use std::time::Duration;
+
+use pprof::ProfilerGuardBuilder;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::Layer;
 
 use domain::models::{BreakCount, BuildCount, PlayTicks, VoteCount};
 use domain::repositories::{PlayerStatsRepository, PlayerTimedStatsRepository};
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
+
+use crate::config::SENTRY_CONFIG;
+
+mod config;
 
 async fn stats_repository_impl() -> anyhow::Result<
     impl PlayerStatsRepository<BreakCount>
@@ -58,24 +65,23 @@ async fn fetch_and_record_all() -> anyhow::Result<()> {
     Ok(())
 }
 
-use crate::config::SENTRY_CONFIG;
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // initialize tracing
     // see https://github.com/tokio-rs/axum/blob/79a0a54bc9f0f585c974b5e6793541baff980662/examples/tracing-aka-logging/src/main.rs
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
-        ))
-        .with(tracing_subscriber::fmt::layer())
         .with(sentry::integrations::tracing::layer())
+        .with(
+            tracing_subscriber::fmt::layer().with_filter(tracing_subscriber::EnvFilter::new(
+                std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+            )),
+        )
         .init();
 
     // setup sentry
-    // only send sentry events when it's not running locally
-    let _guard = if SENTRY_CONFIG.environment_name != "local" {
-        let _guard = sentry::init((
+    // only send sentry events when we are not running locally
+    let _sentry_client_guard = if SENTRY_CONFIG.environment_name != "local" {
+        Some(sentry::init((
             "https://20ce98e4b5304846be70f3bd78a6a588:2cfe5fb8288c4635bb84630b41d21bf2@sentry.onp.admin.seichi.click/9",
             sentry::ClientOptions {
                 release: sentry::release_name!(),
@@ -83,16 +89,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 enable_profiling: true,
                 profiles_sample_rate: 1.0,
                 environment: Some(SENTRY_CONFIG.environment_name.clone().into()),
+                shutdown_timeout: Duration::from_secs(10),
                 ..Default::default()
             },
-        ));
-
-        sentry::configure_scope(|scope| scope.set_level(Some(sentry::Level::Warning)));
-
-        Some(_guard)
+        )))
     } else {
         None
     };
+
+    // hack: spin up profiler, or else the profiler takes around 2 seconds to start
+    //       at the beginning of a profiled span
+    drop(ProfilerGuardBuilder::default().build());
 
     fetch_and_record_all().await?;
 
