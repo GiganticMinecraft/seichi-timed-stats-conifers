@@ -2,16 +2,20 @@
 #![warn(clippy::nursery, clippy::pedantic)]
 #![allow(clippy::cargo_common_metadata)]
 
-mod config;
-
-use domain::models::{BreakCount, BuildCount, PlayTicks, VoteCount};
-use domain::repositories::{PlayerStatsRepository, PlayerTimedStatsRepository};
-use infra_upstream_repository_impl::MockStatsRepository;
 use std::time::Duration;
+
 use tokio::time::sleep;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
+
+use domain::models::{BreakCount, BuildCount, PlayTicks, VoteCount};
+use domain::repositories::{PlayerStatsRepository, PlayerTimedStatsRepository};
+use infra_upstream_repository_impl::MockStatsRepository;
+
+use crate::config::SENTRY_CONFIG;
+
+mod config;
 
 async fn stats_repository_impl() -> anyhow::Result<
     impl PlayerStatsRepository<BreakCount>
@@ -61,8 +65,6 @@ async fn fetch_and_record_all() -> anyhow::Result<()> {
     Ok(())
 }
 
-use crate::config::SENTRY_CONFIG;
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // initialize tracing
@@ -78,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // setup sentry
     // only send sentry events when it's not running locally
-    let _guard = if SENTRY_CONFIG.environment_name != "local" {
+    let sentry_client_guard = if SENTRY_CONFIG.environment_name != "local" {
         Some(sentry::init((
             "https://20ce98e4b5304846be70f3bd78a6a588:2cfe5fb8288c4635bb84630b41d21bf2@sentry.onp.admin.seichi.click/9",
             sentry::ClientOptions {
@@ -95,18 +97,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
-    // Transaction can be started by providing the name and the operation
-    let tx_ctx = sentry::TransactionContext::new("Ingestion batch", "Ingest upstream data to TSDB");
-    let transaction = sentry::start_transaction(tx_ctx);
-    // sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
-
     fetch_and_record_all().await?;
 
-    transaction.finish(); // Finishing the transaction will send it to Sentry
-
-    drop(_guard);
-
-    sleep(Duration::from_secs(10)).await;
+    // wait for sentry to send events
+    drop(sentry_client_guard);
+    sleep(Duration::from_secs(5)).await;
 
     Ok(())
 }
