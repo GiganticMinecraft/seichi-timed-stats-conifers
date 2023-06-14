@@ -2504,6 +2504,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "de31c6e03322af2175d3c850c5b5e11efcadc01948cd1fb7b5ad0a7c7b6c7ff2"
 dependencies = [
  "httpdate",
+ "log",
  "native-tls",
  "reqwest",
  "sentry-backtrace",
@@ -2552,6 +2553,7 @@ dependencies = [
  "findshlibs",
  "indexmap",
  "libc",
+ "log",
  "once_cell",
  "pprof",
  "rand",
