@@ -424,6 +424,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e496a50fda8aacccc86d7529e2c1e0892dbd0f898a6b5645b5561b89c3210efa"
 
 [[package]]
+name = "cpp_demangle"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c76f98bdfc7f66172e6c7065f981ebb576ffc903fe4c0561d9f0c2509226dc6"
+dependencies = [
+ "cfg-if 1.0.0",
+]
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2469,6 +2478,7 @@ dependencies = [
  "infra-db-repository-impl",
  "infra-upstream-repository-impl",
  "once_cell",
+ "pprof",
  "sentry",
  "serde",
  "tokio",
@@ -2791,6 +2801,7 @@ version = "10.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79be897be8a483a81fff6a3a4e195b4ac838ef73ca42d348b3f722da9902e489"
 dependencies = [
+ "cpp_demangle",
  "rustc-demangle",
  "symbolic-common",
 ]

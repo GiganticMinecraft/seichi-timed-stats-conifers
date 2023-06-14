@@ -2,8 +2,9 @@
 #![warn(clippy::nursery, clippy::pedantic)]
 #![allow(clippy::cargo_common_metadata)]
 
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
+use pprof::ProfilerGuardBuilder;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
@@ -95,6 +96,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+
+    // hack: spin up profiler, or else the profiler takes around 2 seconds to start
+    //       at the beginning of a profiled span
+    drop(ProfilerGuardBuilder::default().build());
 
     fetch_and_record_all().await?;
 
