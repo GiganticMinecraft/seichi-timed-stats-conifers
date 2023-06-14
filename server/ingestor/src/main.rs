@@ -4,7 +4,6 @@
 
 use std::time::Duration;
 
-use tokio::time::sleep;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
@@ -79,8 +78,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     // setup sentry
-    // only send sentry events when it's not running locally
-    let sentry_client_guard = if SENTRY_CONFIG.environment_name != "local" {
+    // only send sentry events when we are not running locally
+    let _sentry_client_guard = if SENTRY_CONFIG.environment_name != "local" {
         Some(sentry::init((
             "https://20ce98e4b5304846be70f3bd78a6a588:2cfe5fb8288c4635bb84630b41d21bf2@sentry.onp.admin.seichi.click/9",
             sentry::ClientOptions {
@@ -98,10 +97,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     fetch_and_record_all().await?;
-
-    // wait for sentry to send events
-    drop(sentry_client_guard);
-    sleep(Duration::from_secs(5)).await;
 
     Ok(())
 }
