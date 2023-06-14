@@ -2,7 +2,7 @@
 #![warn(clippy::nursery, clippy::pedantic)]
 #![allow(clippy::cargo_common_metadata)]
 
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use pprof::ProfilerGuardBuilder;
 use tracing_subscriber::layer::SubscriberExt;
