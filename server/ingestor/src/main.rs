@@ -103,5 +103,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     fetch_and_record_all().await?;
 
+    // hack: そのまま main() を抜けると performance 情報が Sentry に送られないので、バックグラウンドで送ってもらう
+    //       送信を一度開始すれば、送信そのものが終了するまでプロセスが抜けることは無さそう
+    //       https://github.com/GiganticMinecraft/seichi-timed-stats-conifers/issues/61#issuecomment-1601727402
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
     Ok(())
 }
