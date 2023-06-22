@@ -10,6 +10,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::anyhow;
 
+use crate::debugging_utils::display_diff_point_ids_for_tracing;
 use crate::structures_embedded_in_rdb::{
     DiffPoint, DiffPointId, FullSnapshotPoint, IdIndexedDiffPoints, SnapshotDiff,
 };
@@ -41,11 +42,6 @@ impl_from_value_column!(BreakCount, BreakCount, u64);
 impl_from_value_column!(BuildCount, BuildCount, u64);
 impl_from_value_column!(PlayTicks, PlayTicks, u64);
 impl_from_value_column!(VoteCount, VoteCount, u64);
-
-fn display_diff_point_ids_for_tracing(diff_point_ids: &HashSet<DiffPointId>) -> String {
-    let diff_point_ids = diff_point_ids.iter().map(|id| id.0).collect::<Vec<_>>();
-    format!("{:?}", diff_point_ids)
-}
 
 macro_rules! impl_has_incremental_snapshot_tables {
     ($stats_type:ty,

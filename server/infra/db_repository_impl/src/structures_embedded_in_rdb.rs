@@ -5,10 +5,19 @@ use chrono::{DateTime, Utc};
 use domain::models::{Player, PlayerUuidString, StatsSnapshot};
 use ordered_float::OrderedFloat;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct FullSnapshotPoint<Stats> {
     pub id: u64,
     pub full_snapshot: StatsSnapshot<Stats>,
+}
+
+impl<Stats: Debug> Debug for FullSnapshotPoint<Stats> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FullSnapshotPoint")
+            .field("id", &self.id)
+            .field("player_stats_count", &self.full_snapshot.len())
+            .finish()
+    }
 }
 
 pub struct SnapshotDiff<Stats> {
@@ -19,11 +28,7 @@ pub struct SnapshotDiff<Stats> {
 impl<Stats: Debug> Debug for SnapshotDiff<Stats> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SnapshotDiff")
-            .field("utc_timestamp", &self.utc_timestamp)
-            .field(
-                "player_stats_diffs",
-                &format!("map with count = {}", &self.player_stats_diffs.len()),
-            )
+            .field("player_stats_diffs_count", &self.player_stats_diffs.len())
             .finish()
     }
 }
@@ -107,10 +112,18 @@ pub enum SnapshotPoint<Stats> {
     Diff(DiffPoint<Stats>),
 }
 
-#[derive(Debug)]
 pub struct DiffSequence<Stats> {
     pub base_point: FullSnapshotPoint<Stats>,
     pub diff_points: Vec<DiffPoint<Stats>>,
+}
+
+impl<Stats: Debug> Debug for DiffSequence<Stats> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DiffSequence")
+            .field("base_point", &self.base_point)
+            .field("diff_points_count", &self.diff_points.len())
+            .finish()
+    }
 }
 
 impl<Stats: Clone> DiffSequence<Stats> {
