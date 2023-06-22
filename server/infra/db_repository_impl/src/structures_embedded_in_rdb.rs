@@ -231,7 +231,6 @@ fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Debug + Clone + 
     }
 }
 
-#[derive(Debug)]
 pub struct IdIndexedDiffPoints<Stats>(HashMap<DiffPointId, DiffPoint<Stats>>);
 
 impl<Stats: Clone> IdIndexedDiffPoints<Stats> {
@@ -297,7 +296,7 @@ impl<Stats: Clone> IdIndexedDiffPoints<Stats> {
     }
 }
 
-#[tracing::instrument]
+#[tracing::instrument(skip(all_diff_points_over_base_point))]
 pub fn choose_base_diff_sequence_for_snapshot_with_heuristics<Stats: Debug + Clone + Eq>(
     base_point: FullSnapshotPoint<Stats>,
     all_diff_points_over_base_point: IdIndexedDiffPoints<Stats>,

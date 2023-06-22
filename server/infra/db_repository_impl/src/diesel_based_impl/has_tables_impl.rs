@@ -42,6 +42,11 @@ impl_from_value_column!(BuildCount, BuildCount, u64);
 impl_from_value_column!(PlayTicks, PlayTicks, u64);
 impl_from_value_column!(VoteCount, VoteCount, u64);
 
+fn display_diff_point_ids_for_tracing(diff_point_ids: &HashSet<DiffPointId>) -> String {
+    let diff_point_ids = diff_point_ids.iter().map(|id| id.0).collect::<Vec<_>>();
+    format!("{:?}", diff_point_ids)
+}
+
 macro_rules! impl_has_incremental_snapshot_tables {
     ($stats_type:ty,
      $full_snapshot_point_table:ident,
@@ -200,7 +205,10 @@ macro_rules! impl_has_incremental_snapshot_tables {
                 })
             }
 
-            #[tracing::instrument(skip(conn))]
+            #[tracing::instrument(
+                skip(diff_snapshot_point_ids, conn),
+                fields(diff_point_ids = display_diff_point_ids_for_tracing(&diff_snapshot_point_ids))
+            )]
             async fn read_diff_snapshot_points(
                 diff_snapshot_point_ids: HashSet<DiffPointId>,
                 conn: &mut Connection,
