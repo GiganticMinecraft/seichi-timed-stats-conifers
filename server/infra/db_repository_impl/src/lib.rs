@@ -65,7 +65,7 @@ impl<
         Stats: Debug + HasIncrementalSnapshotTables<Object<AsyncMysqlConnection>> + Send + 'static,
     > PlayerTimedStatsRepository<Stats> for DatabaseConnector
 {
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self), fields(stats_type = std::any::type_name::<Stats>()))]
     async fn record_snapshot(&self, snapshot: StatsSnapshot<Stats>) -> anyhow::Result<()> {
         let mut conn = self.pool.get().await?;
         sql_query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
@@ -105,7 +105,7 @@ impl<
         .await
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self), fields(stats_type = std::any::type_name::<Stats>()))]
     async fn search_snapshot(
         &self,
         condition: TimeBasedSnapshotSearchCondition,
