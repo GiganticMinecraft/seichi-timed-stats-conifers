@@ -168,6 +168,18 @@ fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Debug + Clone + 
     sequence: DiffSequence<Stats>,
     snapshot: &StatsSnapshot<Stats>,
 ) -> DiffSequence<Stats> {
+    // 特定の diff point の (`sequence` と `snapshot` に基づいた) 情報のうち、
+    // 損失関数を計算するのに必要なものを集めたもの。
+    struct DiffSizeAtParticularDepth {
+        /// その diff point の `sequence` 内のインデックス。
+        diff_sequence_depth: usize,
+        /// `sequence.take(diff_sequence_depth)` に含まれる `player_stats_diffs` の総数。
+        total_diffs_on_current_diff_sequence: usize,
+        /// `sequence.take(diff_sequence_depth)` の中で
+        /// 統計値が一度でも更新されたプレーヤー数の総数
+        diffs_from_snapshot_to_tip: usize,
+    }
+
     /// `snapshot` に対する、 `sequence` 内の diff point の損失関数。
     /// この損失関数は、 `sequence` 内の diff point のうち、
     ///  - `snapshot` にできるだけ近く、
@@ -177,7 +189,7 @@ fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Debug + Clone + 
         let DiffSizeAtParticularDepth {
             diff_sequence_depth: depth,
             total_diffs_on_current_diff_sequence: total_diffs,
-            diffs_from_tip_to_snapshot: diffs,
+            diffs_from_snapshot_to_tip: diffs,
         } = size_at_depth;
 
         OrderedFloat::from(((diffs + 1) as f64) * ((total_diffs + depth + 1) as f64).log(20.0))
@@ -186,32 +198,20 @@ fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Debug + Clone + 
     let base_point = sequence.base_point;
     let diff_points = sequence.diff_points;
 
-    struct ScanState<Stats> {
-        current_snapshot: StatsSnapshot<Stats>,
+    struct ScanState {
+        players_whose_stats_updated_at_least_once: HashSet<Player>,
         current_diff_sequence_depth: usize,
         current_total_diff_size: usize,
     }
 
-    impl<Stats> ScanState<Stats> {
-        fn new(base_point: FullSnapshotPoint<Stats>) -> Self {
+    impl ScanState {
+        fn new() -> Self {
             Self {
-                current_snapshot: base_point.full_snapshot,
+                players_whose_stats_updated_at_least_once: HashSet::new(),
                 current_diff_sequence_depth: 0,
                 current_total_diff_size: 0,
             }
         }
-    }
-
-    // 特定の diff point の (`sequence` と `snapshot` に基づいた) 情報のうち、
-    // 損失関数を計算するのに必要なものを集めたもの。
-    struct DiffSizeAtParticularDepth {
-        /// その diff point の `sequence` 内のインデックス。
-        diff_sequence_depth: usize,
-        /// `sequence.take(diff_sequence_depth)` に含まれる `player_stats_diffs` の総数。
-        total_diffs_on_current_diff_sequence: usize,
-        /// `sequence.take(diff_sequence_depth).into_snapshot_at_the_tip()` と
-        /// `snapshot` の差分の `player_stats_diffs` の総数。
-        diffs_from_tip_to_snapshot: usize,
     }
 
     let virtual_empty_diff_at_base = SnapshotDiff {
@@ -221,15 +221,19 @@ fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Debug + Clone + 
 
     let optimal_depth_size_pair = std::iter::once(&virtual_empty_diff_at_base)
         .chain(diff_points.iter().map(|diff_point| &diff_point.diff))
-        .scan(ScanState::new(base_point.clone()), |state, diff| {
-            diff.apply_to_mut(&mut state.current_snapshot);
+        .scan(ScanState::new(), |state, diff| {
+            state.players_whose_stats_updated_at_least_once.extend(
+                diff.player_stats_diffs.keys().map(|player_uuid| Player {
+                    uuid: player_uuid.clone(),
+                }),
+            );
             state.current_diff_sequence_depth += 1;
             state.current_total_diff_size += diff.player_stats_diffs.len();
 
             Some(DiffSizeAtParticularDepth {
                 diff_sequence_depth: state.current_diff_sequence_depth,
                 total_diffs_on_current_diff_sequence: state.current_total_diff_size,
-                diffs_from_tip_to_snapshot: state.current_snapshot.size_of_diff_to(snapshot),
+                diffs_from_snapshot_to_tip: state.players_whose_stats_updated_at_least_once.len(),
             })
         })
         .min_by_key(loss_function)
