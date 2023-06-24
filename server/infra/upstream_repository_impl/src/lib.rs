@@ -51,6 +51,7 @@ fn empty_request() -> tonic::Request<pbjson_types::Empty> {
 
 #[async_trait::async_trait]
 impl PlayerStatsRepository<BreakCount> for GrpcUpstreamRepository {
+    #[tracing::instrument(skip(self))]
     async fn fetch_stats_snapshot_of_all_players(
         &self,
     ) -> anyhow::Result<StatsSnapshot<BreakCount>> {
@@ -83,6 +84,7 @@ impl PlayerStatsRepository<BreakCount> for GrpcUpstreamRepository {
 
 #[async_trait::async_trait]
 impl PlayerStatsRepository<BuildCount> for GrpcUpstreamRepository {
+    #[tracing::instrument(skip(self))]
     async fn fetch_stats_snapshot_of_all_players(
         &self,
     ) -> anyhow::Result<StatsSnapshot<BuildCount>> {
@@ -115,6 +117,7 @@ impl PlayerStatsRepository<BuildCount> for GrpcUpstreamRepository {
 
 #[async_trait::async_trait]
 impl PlayerStatsRepository<PlayTicks> for GrpcUpstreamRepository {
+    #[tracing::instrument(skip(self))]
     async fn fetch_stats_snapshot_of_all_players(
         &self,
     ) -> anyhow::Result<StatsSnapshot<PlayTicks>> {
@@ -147,6 +150,7 @@ impl PlayerStatsRepository<PlayTicks> for GrpcUpstreamRepository {
 
 #[async_trait::async_trait]
 impl PlayerStatsRepository<VoteCount> for GrpcUpstreamRepository {
+    #[tracing::instrument(skip(self))]
     async fn fetch_stats_snapshot_of_all_players(
         &self,
     ) -> anyhow::Result<StatsSnapshot<VoteCount>> {
