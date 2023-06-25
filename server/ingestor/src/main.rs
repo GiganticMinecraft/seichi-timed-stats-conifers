@@ -14,6 +14,9 @@ use domain::repositories::{PlayerStatsRepository, PlayerTimedStatsRepository};
 
 use crate::config::SENTRY_CONFIG;
 
+use pyroscope::PyroscopeAgent;
+use pyroscope_pprofrs::{pprof_backend, PprofConfig};
+
 mod config;
 
 async fn stats_repository_impl() -> anyhow::Result<
@@ -96,6 +99,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+
+    // Configure Pyroscope Agent
+    let _agent =
+    PyroscopeAgent::builder("http://pyroscope.monitoring:4040", "seichi-timed-stats-conifers")
+    .backend(pprof_backend(PprofConfig::new().sample_rate(100)))
+    .tags(vec![("env", &SENTRY_CONFIG.environment_name)])
+    .build()?;
 
     // hack: spin up profiler, or else the profiler takes around 2 seconds to start
     //       at the beginning of a profiled span
