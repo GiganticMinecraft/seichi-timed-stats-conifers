@@ -481,15 +481,6 @@ checksum = "e496a50fda8aacccc86d7529e2c1e0892dbd0f898a6b5645b5561b89c3210efa"
 
 [[package]]
 name = "cpp_demangle"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eeaa953eaad386a53111e47172c2fedba671e5684c8dd601a5f474f4f118710f"
-dependencies = [
- "cfg-if 1.0.0",
-]
-
-[[package]]
-name = "cpp_demangle"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c76f98bdfc7f66172e6c7065f981ebb576ffc903fe4c0561d9f0c2509226dc6"
@@ -1773,17 +1764,6 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.24.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa52e972a9a719cecb6864fb88568781eb706bac2cd1d4f04a648542dbf78069"
-dependencies = [
- "bitflags 1.3.2",
- "cfg-if 1.0.0",
- "libc",
-]
-
-[[package]]
-name = "nix"
 version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfdda3d196821d6af13126e40375cdf7da646a96114af134d5f417a9a1dc8e1a"
@@ -2100,26 +2080,6 @@ checksum = "26072860ba924cbfa98ea39c8c19b4dd6a4a25423dbdf219c1eca91aa0cf6964"
 
 [[package]]
 name = "pprof"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6472bfed9475542ac46c518734a8d06d71b0f6cb2c17f904aa301711a57786f"
-dependencies = [
- "backtrace",
- "cfg-if 1.0.0",
- "findshlibs",
- "libc",
- "log",
- "nix 0.24.3",
- "once_cell",
- "parking_lot",
- "smallvec",
- "symbolic-demangle 9.2.1",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
-name = "pprof"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "196ded5d4be535690899a4631cc9f18cdc41b7ebf24a79400f46f48e49a11059"
@@ -2133,7 +2093,7 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "smallvec",
- "symbolic-demangle 10.2.1",
+ "symbolic-demangle",
  "tempfile",
  "thiserror",
 ]
@@ -2337,14 +2297,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyroscope"
+version = "0.5.6"
+source = "git+https://github.com/grafana/pyroscope-rs.git?rev=f093c97#f093c97bc823f63b8bac1e3c34053f6477024213"
+dependencies = [
+ "json",
+ "libc",
+ "libflate",
+ "log",
+ "names",
+ "prost",
+ "reqwest",
+ "thiserror",
+ "url",
+ "winapi",
+]
+
+[[package]]
 name = "pyroscope_pprofrs"
 version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14e699bf3e7da41b3a7573d5944d77b1bd96a187aa72f5fa96afb4ed5609cc45"
+source = "git+https://github.com/grafana/pyroscope-rs.git?rev=f093c97#f093c97bc823f63b8bac1e3c34053f6477024213"
 dependencies = [
  "log",
- "pprof 0.10.1",
- "pyroscope",
+ "pprof",
+ "pyroscope 0.5.6 (git+https://github.com/grafana/pyroscope-rs.git?rev=f093c97)",
  "thiserror",
 ]
 
@@ -2735,8 +2711,8 @@ dependencies = [
  "infra-db-repository-impl",
  "infra-upstream-repository-impl",
  "once_cell",
- "pprof 0.11.1",
- "pyroscope",
+ "pprof",
+ "pyroscope 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "pyroscope_pprofrs",
  "sentry",
  "serde",
@@ -2824,7 +2800,7 @@ dependencies = [
  "libc",
  "log",
  "once_cell",
- "pprof 0.11.1",
+ "pprof",
  "rand",
  "rustc_version_runtime",
  "sentry-types",
@@ -3050,18 +3026,6 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "9.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "800963ba330b09a2ae4a4f7c6392b81fbc2784099a98c1eac68c3437aa9382b2"
-dependencies = [
- "debugid",
- "memmap2",
- "stable_deref_trait",
- "uuid 1.3.3",
-]
-
-[[package]]
-name = "symbolic-common"
 version = "10.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b55cdc318ede251d0957f07afe5fed912119b8c1bc5a7804151826db999e737"
@@ -3074,24 +3038,13 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "9.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b940a1fdbc72bb3369e38714efe6cd332dbbe46d093cf03d668b9ac390d1ad0"
-dependencies = [
- "cpp_demangle 0.3.5",
- "rustc-demangle",
- "symbolic-common 9.2.1",
-]
-
-[[package]]
-name = "symbolic-demangle"
 version = "10.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79be897be8a483a81fff6a3a4e195b4ac838ef73ca42d348b3f722da9902e489"
 dependencies = [
- "cpp_demangle 0.4.1",
+ "cpp_demangle",
  "rustc-demangle",
- "symbolic-common 10.2.1",
+ "symbolic-common",
 ]
 
 [[package]]
