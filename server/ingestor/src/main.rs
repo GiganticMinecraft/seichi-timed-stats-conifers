@@ -101,8 +101,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Configure Pyroscope Agent
-    let _agent =
-    PyroscopeAgent::builder("http://pyroscope.monitoring:4040", "seichi-timed-stats-conifers")
+    let _agent = PyroscopeAgent::builder(
+        "http://pyroscope.monitoring:4040",
+        "seichi-timed-stats-conifers",
+    )
     .backend(pprof_backend(PprofConfig::new().sample_rate(100)))
     .tags(vec![("env", &SENTRY_CONFIG.environment_name)])
     .build()?;
