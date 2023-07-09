@@ -3,7 +3,7 @@ use bytes::buf::Buf;
 use std::fmt::Debug;
 use std::str::Utf8Error;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct PlayerUuidString([u8; 36]);
 
 impl PlayerUuidString {
@@ -26,7 +26,7 @@ impl PlayerUuidString {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Copy)]
 pub struct Player {
     pub uuid: PlayerUuidString,
 }

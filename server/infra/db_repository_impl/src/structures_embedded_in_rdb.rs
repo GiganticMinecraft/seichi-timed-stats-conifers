@@ -46,12 +46,9 @@ impl<Stats: Clone> SnapshotDiff<Stats> {
 
     pub fn apply_to_mut(&self, base_snapshot: &mut StatsSnapshot<Stats>) {
         for (player_uuid, diff) in &self.player_stats_diffs {
-            base_snapshot.player_stats.insert(
-                Player {
-                    uuid: player_uuid.clone(),
-                },
-                diff.clone(),
-            );
+            base_snapshot
+                .player_stats
+                .insert(Player { uuid: *player_uuid }, diff.clone());
         }
     }
 }
@@ -59,19 +56,20 @@ impl<Stats: Clone> SnapshotDiff<Stats> {
 pub trait ComputeDiff {
     type Diff;
 
-    fn diff_to(self, other: Self) -> Self::Diff;
+    // TODO: rename to `diff_from` and flip arguments
+    fn diff_to(&self, other: &Self) -> Self::Diff;
     fn size_of_diff_to(&self, other: &Self) -> usize;
 }
 
 impl<Stats: Eq + Clone> ComputeDiff for StatsSnapshot<Stats> {
     type Diff = SnapshotDiff<Stats>;
 
-    fn diff_to(self, other: Self) -> Self::Diff {
+    fn diff_to(&self, other: &Self) -> Self::Diff {
         let mut player_stats_diffs = HashMap::new();
 
-        for (player, stats) in other.player_stats {
-            if Some(stats.clone()) != self.player_stats.get(&player).cloned() {
-                player_stats_diffs.insert(player.uuid.clone(), stats);
+        for (player, stats) in &other.player_stats {
+            if Some(stats) != self.player_stats.get(&player) {
+                player_stats_diffs.insert(player.uuid, stats.clone());
             }
         }
 
@@ -168,16 +166,17 @@ fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Debug + Clone + 
     sequence: DiffSequence<Stats>,
     snapshot: &StatsSnapshot<Stats>,
 ) -> DiffSequence<Stats> {
-    // 特定の diff point の (`sequence` と `snapshot` に基づいた) 情報のうち、
+    // `sequence` 内の特定の diff point の (`snapshot` に基づいた) 情報のうち、
     // 損失関数を計算するのに必要なものを集めたもの。
-    struct DiffSizeAtParticularDepth {
+    struct LossFactorAtParticularDepthInSequence {
         /// その diff point の `sequence` 内のインデックス。
         diff_sequence_depth: usize,
         /// `sequence.take(diff_sequence_depth)` に含まれる `player_stats_diffs` の総数。
         total_diffs_on_current_diff_sequence: usize,
-        /// `sequence.take(diff_sequence_depth)` の中で
-        /// 統計値が一度でも更新されたプレーヤー数の総数
-        diffs_from_snapshot_to_tip: usize,
+        /// `sequence.take(diff_sequence_depth)` から `snapshot` を記録するにあたって
+        /// 発生する差分レコードの数 (の見積もり)。これは厳密な数である必要は無いため、
+        /// 計算するにあたって統計データの単調増加性などを仮定することにする。
+        diffs_required_to_extend_from_the_point: usize,
     }
 
     /// `snapshot` に対する、 `sequence` 内の diff point の損失関数。
@@ -185,29 +184,37 @@ fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Debug + Clone + 
     ///  - `snapshot` にできるだけ近く、
     ///  - 復元時のコストができるだけ低く
     /// なるようなものを選ぶために利用する。
-    fn loss_function(size_at_depth: &DiffSizeAtParticularDepth) -> OrderedFloat<f64> {
-        let DiffSizeAtParticularDepth {
+    fn loss_function(size_at_depth: &LossFactorAtParticularDepthInSequence) -> OrderedFloat<f64> {
+        let LossFactorAtParticularDepthInSequence {
             diff_sequence_depth: depth,
             total_diffs_on_current_diff_sequence: total_diffs,
-            diffs_from_snapshot_to_tip: diffs,
+            diffs_required_to_extend_from_the_point: diffs,
         } = size_at_depth;
 
-        OrderedFloat::from(((diffs + 1) as f64) * ((total_diffs + depth + 1) as f64).log(20.0))
+        OrderedFloat::from(
+            ((diffs + 1) as f64) * ((diffs + total_diffs + depth + 1) as f64).log(20.0),
+        )
     }
 
     let base_point = sequence.base_point;
     let diff_points = sequence.diff_points;
 
-    struct ScanState {
-        players_whose_stats_updated_at_least_once: HashSet<Player>,
+    struct ScanState<Stats> {
+        current_stats_different_from_target_snapshot:
+            HashMap<PlayerUuidString, /* value at target snapshot */ Stats>,
         current_diff_sequence_depth: usize,
         current_total_diff_size: usize,
     }
 
-    impl ScanState {
-        fn new() -> Self {
+    impl<Stats: Eq + Clone> ScanState<Stats> {
+        fn new_against_snapshots(
+            base_full_snapshot: StatsSnapshot<Stats>,
+            target_snapshot: StatsSnapshot<Stats>,
+        ) -> Self {
             Self {
-                players_whose_stats_updated_at_least_once: HashSet::new(),
+                current_stats_different_from_target_snapshot: target_snapshot
+                    .diff_to(&base_full_snapshot)
+                    .player_stats_diffs,
                 current_diff_sequence_depth: 0,
                 current_total_diff_size: 0,
             }
@@ -221,21 +228,47 @@ fn choose_sub_diff_sequence_for_snapshot_with_heuristics<Stats: Debug + Clone + 
 
     let optimal_depth_size_pair = std::iter::once(&virtual_empty_diff_at_base)
         .chain(diff_points.iter().map(|diff_point| &diff_point.diff))
-        .scan(ScanState::new(), |state, diff| {
-            state.players_whose_stats_updated_at_least_once.extend(
-                diff.player_stats_diffs.keys().map(|player_uuid| Player {
-                    uuid: player_uuid.clone(),
-                }),
-            );
-            state.current_diff_sequence_depth += 1;
-            state.current_total_diff_size += diff.player_stats_diffs.len();
+        .scan(
+            ScanState::new_against_snapshots(base_point.full_snapshot.clone(), snapshot.clone()),
+            |state, snapshot_diff| {
+                let diffs = &snapshot_diff.player_stats_diffs;
 
-            Some(DiffSizeAtParticularDepth {
-                diff_sequence_depth: state.current_diff_sequence_depth,
-                total_diffs_on_current_diff_sequence: state.current_total_diff_size,
-                diffs_from_snapshot_to_tip: state.players_whose_stats_updated_at_least_once.len(),
-            })
-        })
+                state.current_diff_sequence_depth += 1;
+                state.current_total_diff_size += diffs.len();
+
+                // 更新が掛かった統計量が `snapshot` での値 (`target`) と一致している場合には
+                // `state.current_stats_different_from_target_snapshot` から削除したい。
+                //
+                // note 1: 各データポイントについて差分を計算するのは O(NM) (N = プレーヤー数、M = 差分ポイント数) 程度掛かる。
+                // 現実的な値として N = 50K、M=5K などを想定すると、この処理はそこそこ CPU time を食ってしまうことがわかる。
+                // 統計量の単調増加性を仮定する場合、ある時点での `snapshot` との差分をすべて計算せずとも
+                // 更新結果が `target` と一致するかを見るだけで `state.current_stats_different_from_target_snapshot` に
+                // 残すべきデータなのかを判断できる。この処理は scan を通して O(L) (L = `sequence` 内の差分レコードの総数) 程度の計算で済む。
+                //
+                // note 2: この処理により、`state.current_stats_different_from_target_snapshot` のサイズは `.scan` 中で単調減少する。
+                for (player_uuid, updated) in diffs {
+                    let target = state
+                        .current_stats_different_from_target_snapshot
+                        .get(player_uuid);
+
+                    if Some(updated) == target {
+                        // note: 統計量の単調増加性により diff のサイズは state.current_stats_different_from_target_snapshot 以下のはずなので、
+                        // state.current_stats_different_from_target_snapshot.retain するよりも .remove していった方が速い
+                        state
+                            .current_stats_different_from_target_snapshot
+                            .remove(player_uuid);
+                    }
+                }
+
+                Some(LossFactorAtParticularDepthInSequence {
+                    diff_sequence_depth: state.current_diff_sequence_depth,
+                    total_diffs_on_current_diff_sequence: state.current_total_diff_size,
+                    diffs_required_to_extend_from_the_point: state
+                        .current_stats_different_from_target_snapshot
+                        .len(),
+                })
+            },
+        )
         .min_by_key(loss_function)
         .unwrap();
 

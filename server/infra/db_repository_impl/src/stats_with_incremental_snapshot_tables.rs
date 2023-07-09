@@ -168,7 +168,7 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods<DBConnection: Send>:
     ) -> anyhow::Result<()> {
         let root_point_id = diff_sequence.base_point.id;
         let previous_point_id = diff_sequence.diff_points.last().map(|p| p.id);
-        let diff = diff_sequence.into_snapshot_at_the_tip().diff_to(snapshot);
+        let diff = diff_sequence.into_snapshot_at_the_tip().diff_to(&snapshot);
 
         let inserted_diff_point_id = Self::create_diff_snapshot_point(
             root_point_id,
