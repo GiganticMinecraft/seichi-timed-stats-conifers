@@ -13,5 +13,5 @@ diesel-async = { version = "0.3.1", features = ["mysql", "deadpool"] }
 futures-util = "0.3.28"
 ordered-float = "3.7.0"
 tracing = "0.1.37"
-serde = "1.0.169"
+serde = "1.0.170"
 envy = "0.4.2"
