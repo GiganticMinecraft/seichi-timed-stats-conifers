@@ -18,7 +18,7 @@ impl<N: Debug> Error for CycleFoundError<N> {}
 
 pub fn construct_cycle_free_path<N>(
     initial_node: N,
-    mut next_node: impl FnMut(N) -> Option<N>,
+    next_node: impl Fn(N) -> Option<N>,
 ) -> Result<Vec<N>, CycleFoundError<N>>
 where
     N: Eq + Hash + Clone,
