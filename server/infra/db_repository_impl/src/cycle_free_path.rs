@@ -1,20 +1,13 @@
 use std::collections::HashSet;
-use std::error::Error;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::hash::Hash;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
+#[error("{cycle:?} contains a cycle")]
 pub struct CycleFoundError<N> {
     pub cycle: Vec<N>,
 }
-
-impl<N: Debug> Display for CycleFoundError<N> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?} contains a cycle", self.cycle)
-    }
-}
-
-impl<N: Debug> Error for CycleFoundError<N> {}
 
 pub fn construct_cycle_free_path<N>(
     initial_node: N,
