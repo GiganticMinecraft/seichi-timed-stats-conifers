@@ -10,7 +10,7 @@ tonic = { version = "0.9.2", features = ["gzip"] }
 pbjson-types = "0.5.1"
 envy = "0.4.2"
 serde = "1.0.171"
-anyhow = "1.0.71"
+anyhow = "1.0.72"
 tracing = "0.1.37"
 async-trait = "0.1.71"
 chrono = "0.4.26"

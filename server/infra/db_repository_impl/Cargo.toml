@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.71"
+anyhow = "1.0.72"
 async-trait = "0.1.71"
 chrono = "0.4.26"
 diesel = { version = "2.1.0", features = ["chrono"] }
