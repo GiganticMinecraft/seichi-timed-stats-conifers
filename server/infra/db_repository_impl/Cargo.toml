@@ -7,7 +7,7 @@ edition = "2021"
 anyhow = "1.0.75"
 async-trait = "0.1.73"
 chrono = "0.4.26"
-diesel = { version = "2.1.0", features = ["chrono"] }
+diesel = { version = "2.1.1", features = ["chrono"] }
 domain = { path = "../../domain" }
 diesel-async = { version = "0.3.2", features = ["mysql", "deadpool"] }
 futures-util = "0.3.28"
