@@ -11,7 +11,7 @@ diesel = { version = "2.1.3", features = ["chrono"] }
 domain = { path = "../../domain" }
 diesel-async = { version = "0.3.2", features = ["mysql", "deadpool"] }
 futures-util = "0.3.28"
-ordered-float = "3.9.1"
+ordered-float = "3.9.2"
 tracing = "0.1.37"
 serde = "1.0.188"
 envy = "0.4.2"
