@@ -11,7 +11,7 @@ pbjson-types = "0.5.1"
 envy = "0.4.2"
 serde = "1.0.189"
 anyhow = "1.0.75"
-tracing = "0.1.37"
+tracing = "0.1.39"
 async-trait = "0.1.74"
 chrono = "0.4.31"
 
