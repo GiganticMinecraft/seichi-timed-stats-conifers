@@ -13,5 +13,5 @@ serde = "1.0.189"
 anyhow = "1.0.82"
 tracing = "0.1.39"
 async-trait = "0.1.80"
-chrono = "0.4.31"
+chrono = "0.4.38"
 
