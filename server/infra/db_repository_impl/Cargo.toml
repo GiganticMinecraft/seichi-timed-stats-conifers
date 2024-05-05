@@ -9,7 +9,7 @@ async-trait = "0.1.80"
 chrono = "0.4.38"
 diesel = { version = "2.1.5", features = ["chrono"] }
 domain = { path = "../../domain" }
-diesel-async = { version = "0.3.2", features = ["mysql", "deadpool"] }
+diesel-async = { version = "0.4.0", features = ["mysql", "deadpool"] }
 futures-util = "0.3.30"
 ordered-float = "3.9.2"
 tracing = "0.1.39"
