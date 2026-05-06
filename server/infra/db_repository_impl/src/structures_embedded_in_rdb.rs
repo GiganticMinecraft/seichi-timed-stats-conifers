@@ -58,6 +58,7 @@ pub trait ComputeDiff {
 
     // TODO: rename to `diff_from` and flip arguments
     fn diff_to(&self, other: &Self) -> Self::Diff;
+    #[allow(dead_code)]
     fn size_of_diff_to(&self, other: &Self) -> usize;
 }
 
@@ -68,7 +69,7 @@ impl<Stats: Eq + Clone> ComputeDiff for StatsSnapshot<Stats> {
         let mut player_stats_diffs = HashMap::new();
 
         for (player, stats) in &other.player_stats {
-            if Some(stats) != self.player_stats.get(&player) {
+            if Some(stats) != self.player_stats.get(player) {
                 player_stats_diffs.insert(player.uuid, stats.clone());
             }
         }
