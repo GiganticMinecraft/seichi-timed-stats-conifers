@@ -16,4 +16,4 @@ sentry = { version = "0.48.0", features = ["tracing", "logs"] }
 tracing = "0.1.39"
 serde = "1.0.198"
 envy = "0.4.2"
-pprof = "0.11.1"
+pprof = "0.15.0"
