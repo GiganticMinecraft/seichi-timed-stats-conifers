@@ -7,5 +7,5 @@ pub fn display_diff_point_ids_for_tracing<'a>(
         .into_iter()
         .map(|id| id.0)
         .collect::<Vec<_>>();
-    format!("{:?}", diff_point_ids)
+    format!("{diff_point_ids:?}")
 }

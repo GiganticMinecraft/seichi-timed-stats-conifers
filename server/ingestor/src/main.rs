@@ -1,6 +1,6 @@
 #![deny(clippy::all, clippy::cargo)]
 #![warn(clippy::nursery, clippy::pedantic)]
-#![allow(clippy::cargo_common_metadata)]
+#![allow(clippy::cargo_common_metadata, clippy::multiple_crate_versions)]
 
 use std::time::Duration;
 
@@ -80,21 +80,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // setup sentry
     // only send sentry events when we are not running locally
-    let _sentry_client_guard = if SENTRY_CONFIG.environment_name != "local" {
+    let _sentry_client_guard = if SENTRY_CONFIG.environment_name == "local" {
+        None
+    } else {
         Some(sentry::init((
             "https://20ce98e4b5304846be70f3bd78a6a588:2cfe5fb8288c4635bb84630b41d21bf2@sentry.onp.admin.seichi.click/9",
             sentry::ClientOptions {
                 release: sentry::release_name!(),
                 traces_sample_rate: 1.0,
-                enable_profiling: true,
-                profiles_sample_rate: 1.0,
                 environment: Some(SENTRY_CONFIG.environment_name.clone().into()),
                 shutdown_timeout: Duration::from_secs(10),
                 ..Default::default()
             },
         )))
-    } else {
-        None
     };
 
     // hack: spin up profiler, or else the profiler takes around 2 seconds to start

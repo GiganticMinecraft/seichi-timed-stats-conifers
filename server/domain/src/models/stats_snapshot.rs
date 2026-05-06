@@ -16,6 +16,10 @@ impl<Stats> StatsSnapshot<Stats> {
     pub fn len(&self) -> usize {
         self.player_stats.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.player_stats.is_empty()
+    }
 }
 
 impl<Stats> Debug for StatsSnapshot<Stats> {
