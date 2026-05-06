@@ -81,12 +81,11 @@ impl<
                         .await?
                         .points_before(snapshot.utc_timestamp);
 
-                let diff_sequence_choice =
-                    choose_base_diff_sequence_for_snapshot_with_heuristics(
-                        full_snapshot,
-                        diff_points_over_full_snapshot,
-                        &snapshot,
-                    )?;
+                let diff_sequence_choice = choose_base_diff_sequence_for_snapshot_with_heuristics(
+                    full_snapshot,
+                    diff_points_over_full_snapshot,
+                    &snapshot,
+                )?;
 
                 if let DiffSequenceChoice::OptimalAccordingToHeuristics(diff_sequence) =
                     diff_sequence_choice
@@ -115,8 +114,7 @@ impl<
 
                 if let Some(snapshot_point) = snapshot_point {
                     let sequence =
-                        Stats::construct_diff_sequence_leading_up_to(snapshot_point, conn)
-                            .await?;
+                        Stats::construct_diff_sequence_leading_up_to(snapshot_point, conn).await?;
 
                     anyhow::Ok(Some(sequence))
                 } else {
