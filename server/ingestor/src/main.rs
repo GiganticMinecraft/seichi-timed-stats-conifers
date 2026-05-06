@@ -86,8 +86,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             sentry::ClientOptions {
                 release: sentry::release_name!(),
                 traces_sample_rate: 1.0,
-                enable_profiling: true,
-                profiles_sample_rate: 1.0,
                 environment: Some(SENTRY_CONFIG.environment_name.clone().into()),
                 shutdown_timeout: Duration::from_secs(10),
                 ..Default::default()
