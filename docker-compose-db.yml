@@ -1,6 +1,6 @@
 services:
   db:
-    image: mysql:8.4.9
+    image: mysql:9.7.0
     environment:
       - TZ=Asia/Tokyo
       - MYSQL_ROOT_PASSWORD=password
