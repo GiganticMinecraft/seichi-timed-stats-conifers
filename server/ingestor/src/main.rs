@@ -2,19 +2,14 @@
 #![warn(clippy::nursery, clippy::pedantic)]
 #![allow(clippy::cargo_common_metadata, clippy::multiple_crate_versions)]
 
-use std::time::Duration;
-
-use pprof::ProfilerGuardBuilder;
+use pyroscope::backend::{pprof_backend, BackendConfig, PprofConfig};
+use pyroscope::pyroscope::PyroscopeAgentBuilder;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 
 use domain::models::{BreakCount, BuildCount, PlayTicks, VoteCount};
 use domain::repositories::{PlayerStatsRepository, PlayerTimedStatsRepository};
-
-use crate::config::SENTRY_CONFIG;
-
-mod config;
 
 async fn stats_repository_impl() -> anyhow::Result<
     impl PlayerStatsRepository<BreakCount>
@@ -69,8 +64,9 @@ async fn fetch_and_record_all() -> anyhow::Result<()> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // initialize tracing
     // see https://github.com/tokio-rs/axum/blob/79a0a54bc9f0f585c974b5e6793541baff980662/examples/tracing-aka-logging/src/main.rs
+    // 旧 Sentry の撤去 (GiganticMinecraft/seichi_infra#5613) に伴い SDK を除去した。
+    // エラーの検知は stdout ログと Kubernetes 側の Job 失敗アラートに委ねる
     tracing_subscriber::registry()
-        .with(sentry::integrations::tracing::layer())
         .with(
             tracing_subscriber::fmt::layer().with_filter(tracing_subscriber::EnvFilter::new(
                 std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
@@ -78,33 +74,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    // setup sentry
-    // only send sentry events when we are not running locally
-    let _sentry_client_guard = if SENTRY_CONFIG.environment_name == "local" {
-        None
-    } else {
-        Some(sentry::init((
-            "https://20ce98e4b5304846be70f3bd78a6a588:2cfe5fb8288c4635bb84630b41d21bf2@sentry.onp.admin.seichi.click/9",
-            sentry::ClientOptions {
-                release: sentry::release_name!(),
-                traces_sample_rate: 1.0,
-                environment: Some(SENTRY_CONFIG.environment_name.clone().into()),
-                shutdown_timeout: Duration::from_secs(10),
-                ..Default::default()
-            },
-        )))
-    };
+    // 継続プロファイリング (Grafana Pyroscope への push)。
+    // PYROSCOPE_SERVER_ADDRESS 未設定 (ローカル実行など) の場合は何もしない。
+    // プロファイル取得の失敗で ingest 本体を止めない
+    let pyroscope_agent = std::env::var("PYROSCOPE_SERVER_ADDRESS")
+        .ok()
+        .and_then(|server_address| {
+            let started = PyroscopeAgentBuilder::new(
+                &server_address,
+                "seichi-timed-stats-conifers-ingestor",
+                100,
+                "pyroscope-rs",
+                env!("CARGO_PKG_VERSION"),
+                pprof_backend(PprofConfig::default(), BackendConfig::default()),
+            )
+            .build()
+            .and_then(pyroscope::PyroscopeAgent::start);
 
-    // hack: spin up profiler, or else the profiler takes around 2 seconds to start
-    //       at the beginning of a profiled span
-    drop(ProfilerGuardBuilder::default().build());
+            match started {
+                Ok(agent) => Some(agent),
+                Err(error) => {
+                    tracing::warn!(%error, "Pyroscope agent の起動に失敗したため、プロファイルなしで続行します");
+                    None
+                }
+            }
+        });
 
-    fetch_and_record_all().await?;
+    let result = fetch_and_record_all().await;
 
-    // hack: そのまま main() を抜けると performance 情報が Sentry に送られないので、バックグラウンドで送ってもらう
-    //       送信を一度開始すれば、送信そのものが終了するまでプロセスが抜けることは無さそう
-    //       https://github.com/GiganticMinecraft/seichi-timed-stats-conifers/issues/61#issuecomment-1601727402
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    // 短命な CronJob のため、プロセス終了前にプロファイルを flush する
+    // (ingest が失敗した場合も flush してから終了する)
+    if let Some(agent) = pyroscope_agent {
+        match agent.stop() {
+            Ok(agent) => agent.shutdown(),
+            Err(error) => tracing::warn!(%error, "Pyroscope agent の停止に失敗しました"),
+        }
+    }
+
+    result?;
 
     Ok(())
 }
