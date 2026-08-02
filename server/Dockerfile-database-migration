@@ -1,5 +1,10 @@
-# syntax=docker/dockerfile:1.26
-FROM rust:1.97.1-slim-bookworm
+# syntax=docker/dockerfile:1
+# bookworm の libmariadb (1:10.11.18) には MariaDB 11.x サーバーに対して
+# 文字列カラムを空として読むリグレッションがあり、__diesel_schema_migrations を
+# 読めず適用済みマイグレーションを再実行してしまう (diesel-rs/diesel#5102)。
+# trixie の libmariadb (1:11.8.6) では解消していることを検証済み。
+# base を bookworm に戻さないこと
+FROM rust:1.97.1-slim-trixie
 WORKDIR /app
 RUN apt-get update && \
     apt-get install -y default-libmysqlclient-dev && \
