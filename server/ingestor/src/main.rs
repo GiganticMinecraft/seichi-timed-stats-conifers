@@ -2,19 +2,12 @@
 #![warn(clippy::nursery, clippy::pedantic)]
 #![allow(clippy::cargo_common_metadata, clippy::multiple_crate_versions)]
 
-use std::time::Duration;
-
-use pprof::ProfilerGuardBuilder;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 
 use domain::models::{BreakCount, BuildCount, PlayTicks, VoteCount};
 use domain::repositories::{PlayerStatsRepository, PlayerTimedStatsRepository};
-
-use crate::config::SENTRY_CONFIG;
-
-mod config;
 
 async fn stats_repository_impl() -> anyhow::Result<
     impl PlayerStatsRepository<BreakCount>
@@ -69,8 +62,9 @@ async fn fetch_and_record_all() -> anyhow::Result<()> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // initialize tracing
     // see https://github.com/tokio-rs/axum/blob/79a0a54bc9f0f585c974b5e6793541baff980662/examples/tracing-aka-logging/src/main.rs
+    // 旧 Sentry の撤去 (GiganticMinecraft/seichi_infra#5613) に伴い SDK を除去した。
+    // エラーの検知は stdout ログと Kubernetes 側の Job 失敗アラートに委ねる
     tracing_subscriber::registry()
-        .with(sentry::integrations::tracing::layer())
         .with(
             tracing_subscriber::fmt::layer().with_filter(tracing_subscriber::EnvFilter::new(
                 std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
@@ -78,33 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    // setup sentry
-    // only send sentry events when we are not running locally
-    let _sentry_client_guard = if SENTRY_CONFIG.environment_name == "local" {
-        None
-    } else {
-        Some(sentry::init((
-            "https://20ce98e4b5304846be70f3bd78a6a588:2cfe5fb8288c4635bb84630b41d21bf2@sentry.onp.admin.seichi.click/9",
-            sentry::ClientOptions {
-                release: sentry::release_name!(),
-                traces_sample_rate: 1.0,
-                environment: Some(SENTRY_CONFIG.environment_name.clone().into()),
-                shutdown_timeout: Duration::from_secs(10),
-                ..Default::default()
-            },
-        )))
-    };
-
-    // hack: spin up profiler, or else the profiler takes around 2 seconds to start
-    //       at the beginning of a profiled span
-    drop(ProfilerGuardBuilder::default().build());
-
     fetch_and_record_all().await?;
-
-    // hack: そのまま main() を抜けると performance 情報が Sentry に送られないので、バックグラウンドで送ってもらう
-    //       送信を一度開始すれば、送信そのものが終了するまでプロセスが抜けることは無さそう
-    //       https://github.com/GiganticMinecraft/seichi-timed-stats-conifers/issues/61#issuecomment-1601727402
-    tokio::time::sleep(Duration::from_secs(2)).await;
 
     Ok(())
 }
