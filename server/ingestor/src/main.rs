@@ -2,6 +2,8 @@
 #![warn(clippy::nursery, clippy::pedantic)]
 #![allow(clippy::cargo_common_metadata, clippy::multiple_crate_versions)]
 
+use pyroscope::backend::{pprof_backend, BackendConfig, PprofConfig};
+use pyroscope::pyroscope::PyroscopeAgentBuilder;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
@@ -72,7 +74,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    fetch_and_record_all().await?;
+    // 継続プロファイリング (Grafana Pyroscope への push)。
+    // PYROSCOPE_SERVER_ADDRESS 未設定 (ローカル実行など) の場合は何もしない。
+    // プロファイル取得の失敗で ingest 本体を止めない
+    let pyroscope_agent = std::env::var("PYROSCOPE_SERVER_ADDRESS")
+        .ok()
+        .and_then(|server_address| {
+            let started = PyroscopeAgentBuilder::new(
+                &server_address,
+                "seichi-timed-stats-conifers-ingestor",
+                100,
+                "pyroscope-rs",
+                env!("CARGO_PKG_VERSION"),
+                pprof_backend(PprofConfig::default(), BackendConfig::default()),
+            )
+            .build()
+            .and_then(pyroscope::PyroscopeAgent::start);
+
+            match started {
+                Ok(agent) => Some(agent),
+                Err(error) => {
+                    tracing::warn!(%error, "Pyroscope agent の起動に失敗したため、プロファイルなしで続行します");
+                    None
+                }
+            }
+        });
+
+    let result = fetch_and_record_all().await;
+
+    // 短命な CronJob のため、プロセス終了前にプロファイルを flush する
+    // (ingest が失敗した場合も flush してから終了する)
+    if let Some(agent) = pyroscope_agent {
+        match agent.stop() {
+            Ok(agent) => agent.shutdown(),
+            Err(error) => tracing::warn!(%error, "Pyroscope agent の停止に失敗しました"),
+        }
+    }
+
+    result?;
 
     Ok(())
 }

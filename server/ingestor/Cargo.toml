@@ -11,5 +11,8 @@ domain = { path = "../domain" }
 anyhow = "1.0.82"
 tokio = { version = "1.32.0", features = ["rt-multi-thread", "macros", "signal"] }
 tracing-subscriber = { version = "0.3.18", features = ["std", "registry", "env-filter"] }
+# 継続プロファイリング (Grafana Pyroscope への push)。
+# 短命な CronJob のため pull (scrape) ではなく push モデルを使う
+pyroscope = { version = "2.1.1", features = ["backend-pprof-rs"] }
 
 tracing = "0.1.39"
