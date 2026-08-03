@@ -13,7 +13,7 @@ on:
   push:
     paths:
       - 'server/database/migrations/**'
-      - 'server/diesel.toml'
+      - 'server/database-migrator/**'
       - 'server/Dockerfile-database-migration'
       - '.github/workflows/build-and-release-migration.yaml'
 
@@ -101,16 +101,12 @@ jobs:
             mariadb -uroot -ptest conifers-test --batch -N \
             -e 'SELECT version FROM __diesel_schema_migrations' | grep -Ex '[0-9]{14}'
 
-      # ビルド入力の記録 (依存一覧・SBOM)。事後に「どの libmariadb が入っていたか」を
-      # イメージを起動せずに追跡できるようにする
+      # ビルド入力の記録 (依存一覧・SBOM)。事後に「どの依存が入っていたか」を
+      # イメージを起動せずに追跡できるようにする。
+      # runtime は distroless (dpkg/シェルなし) のため、Rust 依存の完全な一覧である
+      # Cargo.lock をそのまま記録する (OS レイヤは SBOM が拾う)
       - name: Record dependency inventory
-        run: |
-          {
-            echo '== diesel --version'
-            docker run --rm --entrypoint diesel migration-under-test:local --version
-            echo '== dpkg -l'
-            docker run --rm --entrypoint dpkg migration-under-test:local -l
-          } > migration-image-deps.txt
+        run: cp server/database-migrator/Cargo.lock migration-image-deps.txt
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
