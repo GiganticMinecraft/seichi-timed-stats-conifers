@@ -32,6 +32,17 @@ jobs:
 
       # buf CLIがビルドに必要
       - uses: bufbuild/buf-setup-action@v1
+        with:
+          # Dockerfile の bufbuild/buf イメージとバージョンを揃えること
+          version: "1.72.0"
+
+      # pbjson-types などのビルドに protoc が必要
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends protobuf-compiler
+
+      # buf generate (build.rs) が使う protoc プラグイン。バージョンはスクリプト内で固定されている
+      - name: Install protoc plugins for buf generate
+        run: ./server/install-buf-plugins.sh
 
       - name: Cargo fmt
         run: cargo fmt --manifest-path server/Cargo.toml --all -- --check
