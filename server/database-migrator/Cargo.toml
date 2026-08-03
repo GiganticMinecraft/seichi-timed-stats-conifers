@@ -1,0 +1,20 @@
+# migration 実行専用の standalone crate。
+#
+# ワークスペースに含めない (server/Cargo.toml で exclude) 理由:
+# ワークスペースの Cargo.lock に依存すると、無関係な依存更新のたびに
+# migration イメージのビルド入力が変わってしまう。独自の Cargo.lock を持つ
+# ことで、migration イメージのビルド入力をこの crate と migrations SQL だけに
+# 閉じている (conifers#200/#201)
+[package]
+name = "database-migrator"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# mysql feature は純 Rust の mysql_async を使う。libmysqlclient (C) に依存しない
+# ことが要件 (2026-08-02 インシデント、conifers#201)。
+# migrations feature が AsyncMigrationHarness を提供する (0.9.2 以降)
+diesel-async = { version = "0.9.2", default-features = false, features = ["mysql", "migrations"] }
+diesel_migrations = "2.3"
+tokio = { version = "1", default-features = false, features = ["macros", "rt-multi-thread"] }

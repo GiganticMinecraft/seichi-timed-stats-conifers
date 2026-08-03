@@ -1,3 +1,5 @@
 [workspace]
 
 members = ["ingestor", "domain", "infra/db_repository_impl", "infra/upstream_repository_impl"]
+# database-migrator は独自 Cargo.lock を持つ standalone crate (理由は同 crate の Cargo.toml 参照)
+exclude = ["database-migrator"]

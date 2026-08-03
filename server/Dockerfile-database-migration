@@ -1,27 +1,21 @@
 # syntax=docker/dockerfile:1
-# bookworm の libmariadb (1:10.11.18) には MariaDB 11.x サーバーに対して
-# 文字列カラムを空として読むリグレッションがあり、__diesel_schema_migrations を
-# 読めず適用済みマイグレーションを再実行してしまう (diesel-rs/diesel#5102)。
-# trixie の libmariadb (1:11.8.6) では解消していることを検証済み。
-# base を bookworm に戻さないこと。
-# digest ピンはビルド入力の固定のため (更新は Renovate が追従)。
-# なお APT パッケージはビルド時点のリポジトリを参照するため digest だけでは
-# 固定されない。危険な組合せは CI の migration 二重実行テストで検出する
-FROM rust:1.97.1-slim-trixie@sha256:5c6f46a6e4472ab1ca7ba7d494e6677f2f219ebc02f32025d3986f057635ec9c
-WORKDIR /app
-RUN apt-get update && \
-    apt-get install -y default-libmysqlclient-dev && \
-    rm -rf /var/lib/apt/lists/* && \
-    cargo install diesel_cli --version 2.3.11 --locked --no-default-features --features mysql
-
-# イメージ内容を宣言済みのビルド入力の純関数にするため、実行に必要な
-# ファイルだけを COPY する (COPY . . だと無関係なソース変更でも内容が変わる)
-COPY --link diesel.toml ./
+# migration は純 Rust の database-migrator (diesel-async/mysql_async) で実行する。
+# libmysqlclient (C) への動的リンクを持たないため、OS パッケージ側の
+# クライアントライブラリのリグレッション (2026-08-02 インシデント、
+# diesel-rs/diesel#5102) の影響を構造的に受けない (conifers#201)。
+# base の digest ピンはビルド入力の固定のため (更新は Renovate が追従)
+FROM rust:1.97.1-slim-trixie@sha256:5c6f46a6e4472ab1ca7ba7d494e6677f2f219ebc02f32025d3986f057635ec9c AS build
+WORKDIR /build
+# ビルド入力はこの 2 ディレクトリのみ (migrations SQL はコンパイル時に
+# embed_migrations! でバイナリへ埋め込まれる)
+COPY --link database-migrator ./database-migrator
 COPY --link database/migrations ./database/migrations
+# --locked でコミット済み Cargo.lock を強制する
+RUN cargo build --release --locked --manifest-path database-migrator/Cargo.toml
 
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:d97bc0a941b8d4be647dc0ee75b264ddbb772f1ac5ba690a4309c00723b23775
+LABEL org.opencontainers.image.source=https://github.com/GiganticMinecraft/seichi-timed-stats-conifers
+COPY --from=build --link /build/database-migrator/target/release/database-migrator /
 # DB の接続情報は実行時に環境変数で渡す (すべて必須):
 #   DB_HOST_AND_PORT / DB_USER / DB_PASSWORD / DB_DATABASE_NAME
-# ENV では宣言しない (secret 名の ENV 宣言は BuildKit の
-# SecretsUsedInArgOrEnv 警告対象。値は Kubernetes の Secret から注入される)
-
-ENTRYPOINT ["bash", "-c", "diesel migration run --database-url=mysql://$DB_USER:$DB_PASSWORD@$DB_HOST_AND_PORT/$DB_DATABASE_NAME"]
+CMD ["/database-migrator"]
