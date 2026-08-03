@@ -1,0 +1,151 @@
+# database-migration イメージ専用のビルド/リリース workflow。
+#
+# アプリ本体の CI (build-and-release-application.yaml) から分離している理由:
+# 無関係なアプリ変更で migration イメージが再ビルドされ、ビルド時点の
+# APT パッケージ (libmariadb 等) が入れ替わることが 2026-08-02 インシデント
+# (適用済みマイグレーションの誤再実行で ingest 全停止) の起点だったため。
+# ビルド入力が変わったときだけビルド・配備する (conifers#200)。
+#
+# このため migration イメージの sha タグはアプリ (ingestor) と一致しない。
+# seichi_infra 側は各イメージを独立に bump する。
+name: Migration image
+on:
+  push:
+    paths:
+      - 'server/database/migrations/**'
+      - 'server/diesel.toml'
+      - 'server/Dockerfile-database-migration'
+      - '.github/workflows/build-and-release-migration.yaml'
+
+jobs:
+  build-test-release:
+    name: Build migration image, test idempotency (and publish on master)
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: docker-build-database-migration-${{ github.ref }}
+      cancel-in-progress: true
+    services:
+      # 本番相当 (MariaDB 11.8 系)。二重実行の回帰テスト用
+      mariadb:
+        image: mariadb:11.8
+        env:
+          MARIADB_ROOT_PASSWORD: test
+          MARIADB_DATABASE: conifers-test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/giganticminecraft/seichi-timed-stats-conifers-database-migration
+          tags: |
+            type=sha,prefix=sha-,suffix=,format=short
+
+      - name: Build image for testing
+        uses: docker/build-push-action@v7
+        with:
+          context: ./server
+          file: ./server/Dockerfile-database-migration
+          builder: ${{ steps.buildx.outputs.name }}
+          load: true
+          push: false
+          tags: migration-under-test:local
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 2026-08-02 インシデントの故障機構 (適用済みマイグレーションを未適用と
+      # 誤判定して再実行する) を配備前に検出する回帰テスト。
+      # 1 回目: 初回マイグレーションが適用されること
+      # 2 回目: no-op であること (再実行しようとしたら fail)
+      # 最後に、適用記録の version が期待形式 (14 桁数字) で読めることを DB 側でも確認
+      - name: 'Regression test: run migration twice against MariaDB 11.8'
+        run: |
+          set -euxo pipefail
+          run_migration() {
+            docker run --rm --network host \
+              -e DB_HOST_AND_PORT=127.0.0.1:3306 \
+              -e DB_USER=root \
+              -e DB_PASSWORD=test \
+              -e DB_DATABASE_NAME=conifers-test \
+              migration-under-test:local
+          }
+          first=$(run_migration 2>&1 | tee /dev/stderr)
+          grep -q 'Running migration' <<<"$first"
+          second=$(run_migration 2>&1 | tee /dev/stderr)
+          if grep -q 'Running migration' <<<"$second"; then
+            echo '::error::2 回目の migration 実行が no-op になっていない (適用済みマイグレーションを再実行しようとした)'
+            exit 1
+          fi
+          docker exec ${{ job.services.mariadb.id }} \
+            mariadb -uroot -ptest conifers-test --batch -N \
+            -e 'SELECT version FROM __diesel_schema_migrations' | grep -Ex '[0-9]{14}'
+
+      # ビルド入力の記録 (依存一覧・SBOM)。事後に「どの libmariadb が入っていたか」を
+      # イメージを起動せずに追跡できるようにする
+      - name: Record dependency inventory
+        run: |
+          {
+            echo '== diesel --version'
+            docker run --rm --entrypoint diesel migration-under-test:local --version
+            echo '== dpkg -l'
+            docker run --rm --entrypoint dpkg migration-under-test:local -l
+          } > migration-image-deps.txt
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: migration-under-test:local
+          format: spdx-json
+          output-file: migration-image-sbom.spdx.json
+          upload-artifact: false
+
+      - name: Upload build info
+        uses: actions/upload-artifact@v7
+        with:
+          name: migration-image-build-info-${{ github.sha }}
+          path: |
+            migration-image-deps.txt
+            migration-image-sbom.spdx.json
+
+      - name: Push (on master)
+        id: docker_push
+        if: github.ref == 'refs/heads/master'
+        uses: docker/build-push-action@v7
+        with:
+          context: ./server
+          file: ./server/Dockerfile-database-migration
+          builder: ${{ steps.buildx.outputs.name }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+
+      - name: Record pushed digest
+        if: github.ref == 'refs/heads/master'
+        run: |
+          {
+            echo '## Pushed migration image'
+            echo '- tags: `${{ steps.meta.outputs.tags }}`'
+            echo '- digest: `${{ steps.docker_push.outputs.digest }}`'
+          } >> "$GITHUB_STEP_SUMMARY"

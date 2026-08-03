@@ -61,9 +61,10 @@ jobs:
           - component_name: ingestor
             image_name: ghcr.io/giganticminecraft/seichi-timed-stats-conifers-ingestor
             dockerfile: ./server/Dockerfile-ingestor
-          - component_name: database-migration
-            image_name: ghcr.io/giganticminecraft/seichi-timed-stats-conifers-database-migration
-            dockerfile: ./server/Dockerfile-database-migration
+          # database-migration は build-and-release-migration.yaml に分離した。
+          # ビルド入力 (migrations SQL / Dockerfile) が変わったときだけビルドする。
+          # 無関係なアプリ変更での migration イメージ再ビルドによる依存の入れ替わりが
+          # 2026-08-02 インシデントの起点だったため (conifers#200)
 
     name: Build server docker image (and publish on master) for ${{ matrix.component_name }}
     needs: [ lint-and-test ]
