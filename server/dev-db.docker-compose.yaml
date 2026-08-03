@@ -4,8 +4,8 @@ version: "3.9"
 services:
   db:
     # プロダクションが利用しているバージョンと合わせるべき
-    # https://github.com/GiganticMinecraft/seichi_infra/blob/8b229bb67976b1698fd20ca5ff16ba1f6f91fecb/seichi-onp-k8s/manifests/seichi-kubernetes/apps/seichi-minecraft/mariadb/mariadb.yaml#LL19C11-L19C18
-    image: mariadb:10.11.3
+    # https://github.com/GiganticMinecraft/seichi_infra/blob/e9f270c3ce45d7479f5fda2f4e1d7c1be0bf149f/seichi-onp-k8s/manifests/seichi-kubernetes/apps/seichi-minecraft/mariadb/mariadb.yaml#L14
+    image: mariadb:11.8
     environment:
       MYSQL_USER: mariadb
       MYSQL_PASSWORD: password
