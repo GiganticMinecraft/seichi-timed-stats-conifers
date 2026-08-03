@@ -19,10 +19,9 @@ RUN apt-get update && \
 COPY --link diesel.toml ./
 COPY --link database/migrations ./database/migrations
 
-# DB の接続情報を含んだ環境変数
-ENV DB_HOST_AND_PORT=""
-ENV DB_USER=""
-ENV DB_PASSWORD=""
-ENV DB_DATABASE_NAME=""
+# DB の接続情報は実行時に環境変数で渡す (すべて必須):
+#   DB_HOST_AND_PORT / DB_USER / DB_PASSWORD / DB_DATABASE_NAME
+# ENV では宣言しない (secret 名の ENV 宣言は BuildKit の
+# SecretsUsedInArgOrEnv 警告対象。値は Kubernetes の Secret から注入される)
 
 ENTRYPOINT ["bash", "-c", "diesel migration run --database-url=mysql://$DB_USER:$DB_PASSWORD@$DB_HOST_AND_PORT/$DB_DATABASE_NAME"]
