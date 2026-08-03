@@ -143,9 +143,12 @@ jobs:
 
       - name: Record pushed digest
         if: github.ref == 'refs/heads/master'
+        env:
+          PUSHED_TAGS: ${{ steps.meta.outputs.tags }}
+          PUSHED_DIGEST: ${{ steps.docker_push.outputs.digest }}
         run: |
           {
             echo '## Pushed migration image'
-            echo '- tags: `${{ steps.meta.outputs.tags }}`'
-            echo '- digest: `${{ steps.docker_push.outputs.digest }}`'
+            echo "- tags: \`${PUSHED_TAGS}\`"
+            echo "- digest: \`${PUSHED_DIGEST}\`"
           } >> "$GITHUB_STEP_SUMMARY"
