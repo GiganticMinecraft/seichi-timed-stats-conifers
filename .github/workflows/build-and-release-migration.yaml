@@ -27,7 +27,7 @@ jobs:
     services:
       # 本番相当 (MariaDB 11.8 系)。二重実行の回帰テスト用
       mariadb:
-        image: mariadb:11.8
+        image: mariadb:12.3
         env:
           MARIADB_ROOT_PASSWORD: test
           MARIADB_DATABASE: conifers-test
