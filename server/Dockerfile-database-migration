@@ -4,7 +4,7 @@
 # クライアントライブラリのリグレッション (2026-08-02 インシデント、
 # diesel-rs/diesel#5102) の影響を構造的に受けない (conifers#201)。
 # base の digest ピンはビルド入力の固定のため (更新は Renovate が追従)
-FROM rust:1.97.1-slim-trixie@sha256:3b2879047d42784ca9403ad20c51ed3df361a50f1df96f5777d39b4e33aa65cd AS build
+FROM rust:1.97.1-slim-trixie@sha256:8e8cf8f7fd54a2d23d5a743b3a03f56e26b6c774276c33fa0595111704ebb15c AS build
 WORKDIR /build
 # ビルド入力はこの 2 ディレクトリのみ (migrations SQL はコンパイル時に
 # embed_migrations! でバイナリへ埋め込まれる)
