@@ -13,7 +13,7 @@ COPY --link database/migrations ./database/migrations
 # --locked でコミット済み Cargo.lock を強制する
 RUN cargo build --release --locked --manifest-path database-migrator/Cargo.toml
 
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:d97bc0a941b8d4be647dc0ee75b264ddbb772f1ac5ba690a4309c00723b23775
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:c31ff9abcb1910f3ab25c7957bdaf0bfe12a01eb546e8df2282f1c8f682b606c
 LABEL org.opencontainers.image.source=https://github.com/GiganticMinecraft/seichi-timed-stats-conifers
 COPY --from=build --link /build/database-migrator/target/release/database-migrator /
 # DB の接続情報は実行時に環境変数で渡す (すべて必須):
