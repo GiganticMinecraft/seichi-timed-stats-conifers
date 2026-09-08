@@ -15,7 +15,7 @@ jobs:
       # reads toolchain info from /rust-toolchain.toml
       # cargo のエラー/警告の GitHub UI 表示はこの action が登録する problem matcher が行う
       - name: Setup Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           components: rustfmt, clippy
           # キャッシュは後続の Swatinem/rust-cache で行う
