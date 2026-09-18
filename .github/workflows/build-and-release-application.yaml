@@ -7,7 +7,7 @@ on:
 jobs:
   lint-and-test:
     name: Lint and test server
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -70,7 +70,7 @@ jobs:
 
     name: Build server docker image (and publish on master) for ${{ matrix.component_name }}
     needs: [ lint-and-test ]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       image_tag: ${{ steps.meta.outputs.tags }}
     concurrency:
