@@ -20,7 +20,7 @@ on:
 jobs:
   build-test-release:
     name: Build migration image, test idempotency (and publish on master)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     concurrency:
       group: docker-build-database-migration-${{ github.ref }}
       cancel-in-progress: true
