@@ -34,7 +34,7 @@ jobs:
       - uses: bufbuild/buf-setup-action@v1
         with:
           # Dockerfile の bufbuild/buf イメージとバージョンを揃えること
-          version: "1.72.0"
+          version: "1.73.0"
 
       # pbjson-types などのビルドに protoc が必要
       - name: Install protoc
