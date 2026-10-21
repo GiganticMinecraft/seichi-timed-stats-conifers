@@ -7,7 +7,7 @@
 # ビルド入力が変わったときだけビルド・配備する (conifers#200)。
 #
 # このため migration イメージの sha タグはアプリ (ingestor) と一致しない。
-# seichi_infra 側は各イメージを独立に bump する。
+# seichi_infra 側は各イメージを latest@sha256:... で参照し、Renovate が独立に digest を追従する。
 name: Migration image
 on:
   push:
@@ -25,7 +25,8 @@ jobs:
     runs-on: ubuntu-26.04
     concurrency:
       group: docker-build-database-migration-${{ github.ref }}
-      cancel-in-progress: true
+      # master では古い run の再実行が新しいコミットのビルドを cancel しないよう、キャンセルせず順に待つ
+      cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
     services:
       # 本番相当 (MariaDB 12.3 系)。二重実行の回帰テスト用
       mariadb:
@@ -56,13 +57,35 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # 古い run の再実行や後から完了した run で latest が巻き戻らないよう、
+      # default branch の先頭コミットのビルドでだけ latest を付ける
+      - name: Check if this commit is the head of the default branch
+        id: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          is_head=false
+          if [ "${GITHUB_REF}" = "refs/heads/${DEFAULT_BRANCH}" ]; then
+            # API が失敗しても sha タグのビルドは止めず、latest だけ付けない
+            if ! head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${DEFAULT_BRANCH}" --jq .sha); then
+              echo "::warning::default branch の先頭コミットを取得できなかったため latest を付けない"
+            elif [ "${head_sha}" = "${GITHUB_SHA}" ]; then
+              is_head=true
+            fi
+          fi
+          echo "is_head=${is_head}" >> "$GITHUB_OUTPUT"
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/giganticminecraft/seichi-timed-stats-conifers-database-migration
+          # latest は default branch 先頭のビルドでだけ付ける。seichi_infra のマニフェストは
+          # latest@sha256:... で参照し、Renovate が digest の変化を追従する
           tags: |
             type=sha,prefix=sha-,suffix=,format=short
+            type=raw,value=latest,enable=${{ steps.head.outputs.is_head }}
 
       - name: Build image for testing
         uses: docker/build-push-action@v7
@@ -147,6 +170,7 @@ jobs:
         run: |
           {
             echo '## Pushed migration image'
-            echo "- tags: \`${PUSHED_TAGS}\`"
+            # tags は sha-<short> と latest の改行区切りなので 1 行にまとめる
+            echo "- tags: \`${PUSHED_TAGS//$'\n'/ }\`"
             echo "- digest: \`${PUSHED_DIGEST}\`"
           } >> "$GITHUB_STEP_SUMMARY"
