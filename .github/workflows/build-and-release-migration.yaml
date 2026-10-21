@@ -61,9 +61,10 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/giganticminecraft/seichi-timed-stats-conifers-database-migration
+          # latest は default branch のビルドでだけ付ける。seichi_infra のマニフェストは
+          # latest@sha256:... で参照し、Renovate が digest の変化を追従する
           tags: |
             type=sha,prefix=sha-,suffix=,format=short
-            # seichi_infra のマニフェストは latest@sha256:... で参照し、Renovate が digest の変化を追従する
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build image for testing
