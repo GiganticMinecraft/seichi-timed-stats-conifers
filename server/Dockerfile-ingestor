@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
-# base の digest ピンはビルド入力の固定のため (更新は Renovate が追従)。
-# Rust のバージョンは /rust-toolchain.toml と、Debian の世代は runtime (cc-debian13) と揃えること
+# base の digest ピンはビルド入力の固定のため (digest と cargo-chef のバージョンは Renovate が追従)。
+# タグの rust-1.99.1 は Renovate では上がらないので、/rust-toolchain.toml を上げるときに手で揃えること。
+# Debian の世代 (trixie) は runtime (cc-debian13) の glibc と揃える
 FROM lukemathwalker/cargo-chef:0.1.78-rust-1.99.1-trixie@sha256:cccf15fc75944521a3aa230fe72a101ee0edc65cd1d4b50b5914ce25317c1805 AS chef
 WORKDIR /app
 
@@ -32,8 +33,10 @@ RUN cargo chef cook --release --locked --recipe-path recipe.json
 COPY --link . .
 RUN cargo build --release --locked --bin seichi-timed-stats-conifers-ingestor
 
-# 非 root (uid/gid 65532) で動かす。ingestor は rustls と純 Rust の mysql_async /
-# miniz_oxide を使い、cc イメージ (glibc / libgcc_s / libssl) 以外の共有ライブラリを必要としない
+# 非 root (uid/gid 65532) で動かす (:nonroot タグの既定と同じだが、Kubernetes の
+# runAsNonRoot の前提なので明示する)。バイナリが動的リンクするのは glibc (libc / libm) と
+# libgcc_s だけ (TLS は rustls + aws-lc-rs の静的リンク、DB は純 Rust の mysql_async、
+# flate2 は miniz_oxide) なので、libz などの追加コピーは不要
 FROM gcr.io/distroless/cc-debian13:nonroot@sha256:b7e81cb1af38d9345680e68bcf564d388f96304e25222030fc8c051faf8565b3
 LABEL org.opencontainers.image.source=https://github.com/GiganticMinecraft/seichi-timed-stats-conifers
 COPY --from=build-env --link /app/target/release/seichi-timed-stats-conifers-ingestor /
