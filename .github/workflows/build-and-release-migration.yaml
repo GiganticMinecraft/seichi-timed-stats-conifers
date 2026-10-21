@@ -7,7 +7,7 @@
 # ビルド入力が変わったときだけビルド・配備する (conifers#200)。
 #
 # このため migration イメージの sha タグはアプリ (ingestor) と一致しない。
-# seichi_infra 側は各イメージを独立に bump する。
+# seichi_infra 側は各イメージを latest@sha256:... で参照し、Renovate が独立に digest を追従する。
 name: Migration image
 on:
   push:
@@ -63,6 +63,8 @@ jobs:
           images: ghcr.io/giganticminecraft/seichi-timed-stats-conifers-database-migration
           tags: |
             type=sha,prefix=sha-,suffix=,format=short
+            # seichi_infra のマニフェストは latest@sha256:... で参照し、Renovate が digest の変化を追従する
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build image for testing
         uses: docker/build-push-action@v7
@@ -147,6 +149,7 @@ jobs:
         run: |
           {
             echo '## Pushed migration image'
-            echo "- tags: \`${PUSHED_TAGS}\`"
+            # tags は sha-<short> と latest の改行区切りなので 1 行にまとめる
+            echo "- tags: \`$(tr '\n' ' ' <<<"${PUSHED_TAGS}")\`"
             echo "- digest: \`${PUSHED_DIGEST}\`"
           } >> "$GITHUB_STEP_SUMMARY"
