@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use anyhow::anyhow;
 
@@ -29,6 +30,16 @@ pub mod config {
 
 type GameDataGrpcClient = ReadServiceClient<tonic::transport::Channel>;
 
+/// 上流への TCP 接続 (再接続を含む) の上限。到達不能なときに Job の実行期限
+/// (activeDeadlineSeconds 240) まで待ち続けないようにする
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// 1 リクエストあたりの上限。全プレーヤー分の統計を 1 レスポンスで返すため長めに取る。
+/// 統計 4 種を順に取得するので実行全体の上限にはならない (全体は Job の
+/// activeDeadlineSeconds が打ち切る)。tonic の仕様上、レスポンスヘッダの受信までが
+/// 対象で、ボディ受信中の停滞は対象外
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+
 #[derive(Debug)]
 pub struct GrpcUpstreamRepository {
     client: GameDataGrpcClient,
@@ -36,7 +47,13 @@ pub struct GrpcUpstreamRepository {
 
 impl GrpcUpstreamRepository {
     pub async fn try_new(config: config::GrpcClient) -> anyhow::Result<Self> {
-        let client = ReadServiceClient::connect(config.game_data_server_grpc_endpoint_url).await?;
+        let channel =
+            tonic::transport::Endpoint::from_shared(config.game_data_server_grpc_endpoint_url)?
+                .connect_timeout(CONNECT_TIMEOUT)
+                .timeout(REQUEST_TIMEOUT)
+                .connect()
+                .await?;
+        let client = ReadServiceClient::new(channel);
         Ok(Self { client })
     }
 
