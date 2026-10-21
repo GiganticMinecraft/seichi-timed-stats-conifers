@@ -60,6 +60,17 @@ async fn fetch_and_record_all() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// SIGTERM (Kubernetes による Pod 停止) または SIGINT (Ctrl-C) を待つ。
+/// 戻り値は慣例に従った終了コード (128 + シグナル番号)
+async fn wait_for_shutdown_signal(
+    sigterm: &mut tokio::signal::unix::Signal,
+) -> (&'static str, i32) {
+    tokio::select! {
+        _ = sigterm.recv() => ("SIGTERM", 128 + 15),
+        _ = tokio::signal::ctrl_c() => ("SIGINT", 128 + 2),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // initialize tracing
@@ -100,7 +111,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
 
-    let result = fetch_and_record_all().await;
+    // concurrencyPolicy: Replace による置き換えや activeDeadlineSeconds 超過、
+    // ノードの drain などで Pod が止められるときに SIGTERM を受ける。
+    // 進行中の ingest を drop して中断し (未コミットのトランザクションは
+    // ロールバックされる)、Pyroscope の flush を通してから終了する
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    let mut aborted_exit_code = None;
+    let result = tokio::select! {
+        result = fetch_and_record_all() => result,
+        (signal, exit_code) = wait_for_shutdown_signal(&mut sigterm) => {
+            tracing::warn!(signal, "shutdown signal received, aborting ingestion");
+            aborted_exit_code = Some(exit_code);
+            Ok(())
+        }
+    };
 
     // 短命な CronJob のため、プロセス終了前にプロファイルを flush する
     // (ingest が失敗した場合も flush してから終了する)
@@ -109,6 +133,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(agent) => agent.shutdown(),
             Err(error) => tracing::warn!(%error, "Pyroscope agent の停止に失敗しました"),
         }
+    }
+
+    // 中断時は非 0 で終了する。0 で終了すると、ノードの drain などで Pod だけが
+    // 止められた場合に Job が「成功」として完了し、取り込めなかった回が
+    // 再試行されず、成功の途絶を見る ConifersIngestorStalled も検知できなくなるため
+    if let Some(exit_code) = aborted_exit_code {
+        std::process::exit(exit_code);
     }
 
     result?;
