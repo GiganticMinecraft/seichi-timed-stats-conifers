@@ -4,12 +4,6 @@ on:
     paths-ignore:
       - '**.md'
 
-# master では run をキャンセルせず push 順に直列化する。job 単位の concurrency だけだと、
-# lint-and-test の完了順で古いコミットの build-image が後から走り latest が巻き戻りうるため
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
-
 jobs:
   lint-and-test:
     name: Lint and test server
@@ -81,7 +75,8 @@ jobs:
       image_tag: ${{ steps.meta.outputs.tags }}
     concurrency:
       group: docker-build-${{ matrix.component_name }}-${{ github.ref }}
-      # master では古い run の再実行が新しいコミットのビルドを cancel しないよう、キャンセルせず順に待つ
+      # master では古いコミットの run (再実行や lint-and-test の完了順の逆転) が新しいコミットの
+      # ビルドを cancel しないよう、キャンセルせず待たせる
       cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
     steps:
       - name: checkout
@@ -98,11 +93,10 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # default branch のビルドで latest を付ける。初回実行 (run_attempt 1) は concurrency で
-      # push 順に直列化されているので常に付ける。先頭コミットだけに限ると、直後のコミットが
-      # この workflow を起動しない (paths フィルタ等) とき latest が進まなくなるため。
-      # 再実行 (run_attempt 2 以降) は古いコミットの run だと latest が巻き戻るので、
-      # default branch の先頭コミットのときだけ付ける
+      # default branch のビルドで latest を付ける。ただし、この workflow の default branch 上の
+      # 最新の run が別コミットのもの (古い run の再実行や、完了順の逆転) なら付けない。
+      # 「branch の先頭コミットか」で判定すると、paths フィルタ等でこの workflow を起動しない
+      # コミットが後に続いたとき latest が進まなくなるため、run の新しさで判定する
       - name: Decide whether to tag latest
         id: latest
         env:
@@ -111,15 +105,20 @@ jobs:
         run: |
           enable=false
           if [ "${GITHUB_REF}" = "refs/heads/${DEFAULT_BRANCH}" ]; then
-            if [ "${GITHUB_RUN_ATTEMPT}" = 1 ]; then
-              enable=true
-            # API が失敗しても sha タグのビルドは止めず、latest だけ付けない
-            elif ! head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${DEFAULT_BRANCH}" --jq .sha); then
-              echo "::warning::default branch の先頭コミットを取得できなかったため latest を付けない"
-            elif [ "${head_sha}" = "${GITHUB_SHA}" ]; then
+            workflow_file=${GITHUB_WORKFLOW_REF%@*}
+            workflow_file=${workflow_file##*/}
+            if ! newest_sha=$(gh run list -R "${GITHUB_REPOSITORY}" --workflow "${workflow_file}" \
+                --branch "${DEFAULT_BRANCH}" --event push --limit 1 --json headSha --jq '.[0].headSha'); then
+              # API が失敗しても sha タグのビルドは止めない。初回実行なら latest を付け、
+              # 巻き戻りうる再実行では付けない
+              echo "::warning::最新の run を取得できなかった (run_attempt=${GITHUB_RUN_ATTEMPT})"
+              if [ "${GITHUB_RUN_ATTEMPT}" = 1 ]; then
+                enable=true
+              fi
+            elif [ "${newest_sha}" = "${GITHUB_SHA}" ]; then
               enable=true
             else
-              echo "::notice::default branch の先頭ではないコミットの再実行なので latest を付けない"
+              echo "::notice::より新しいコミット (${newest_sha}) の run があるので latest を付けない"
             fi
           fi
           echo "enable=${enable}" >> "$GITHUB_OUTPUT"
