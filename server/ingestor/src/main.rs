@@ -53,11 +53,14 @@ const STAT_KIND_ALL: &str = "all";
 /// 毎回 0 から始まる。Prometheus 側で `rate` / `increase` を使うと実行をまたいだ
 /// 増加を取りこぼすので、`max_over_time` / `count_over_time` などで見ること
 struct IngestMetrics {
-    /// 実行全体 (`stat_kind="all"`) と統計の種類ごとの所要時間
+    /// 実行全体 (`stat_kind="all"`) と統計の種類ごとの所要時間 (`outcome`: success / failure / aborted)。
+    /// 両方が同じ instrument に入るので、`stat_kind` をまたいで合計しないこと
     duration: Histogram<f64>,
     /// 上流から取得したプレーヤー数 (統計の種類ごと)
     players: Gauge<u64>,
-    /// 失敗の回数 (`reason`: setup / fetch / record / aborted)
+    /// 失敗の回数。失敗した実行 1 回につき 1 だけ数える (失敗した時点で ingest を止めるため)。
+    /// fetch / record の失敗はその統計の種類、setup (接続の準備) と aborted (シグナルで中断) は
+    /// `stat_kind="all"` に付く。失敗した実行の数は `stat_kind` を問わず合計すればよい
     failures: Counter<u64>,
 }
 
@@ -129,6 +132,52 @@ async fn timed_stats_repository_impl() -> anyhow::Result<
     DatabaseConnector::try_new(Database::from_env()?).await
 }
 
+/// 統計 1 種類分の処理の結果 (outcome と所要時間、失敗の理由) を span とメトリクスに記録する。
+/// 結果を記録しないまま drop された (シグナルで ingest ごと中断された) ときは aborted として記録する。
+/// 中断の failures は実行全体 (`stat_kind="all"`) の側で 1 回だけ数える
+struct StatRun<'a> {
+    stat_kind: &'static str,
+    span: tracing::Span,
+    metrics: &'a IngestMetrics,
+    started: Instant,
+    finished: bool,
+}
+
+impl<'a> StatRun<'a> {
+    fn start(stat_kind: &'static str, metrics: &'a IngestMetrics) -> Self {
+        Self {
+            stat_kind,
+            span: tracing::Span::current(),
+            metrics,
+            started: Instant::now(),
+            finished: false,
+        }
+    }
+
+    fn finish(&mut self, outcome: &'static str) {
+        if std::mem::replace(&mut self.finished, true) {
+            return;
+        }
+        self.span.record("outcome", outcome);
+        if outcome != "success" {
+            self.span.record("otel.status_code", "error");
+        }
+        self.metrics
+            .record_duration(self.stat_kind, outcome, self.started.elapsed());
+    }
+
+    fn fail(&mut self, reason: &'static str) {
+        self.metrics.record_failure(self.stat_kind, reason);
+        self.finish("failure");
+    }
+}
+
+impl Drop for StatRun<'_> {
+    fn drop(&mut self) {
+        self.finish("aborted");
+    }
+}
+
 /// 統計 1 種類分を上流から取得して記録する。
 /// span には取得件数・記録件数・記録形式 (full / diff) を属性として付ける
 #[tracing::instrument(
@@ -138,6 +187,7 @@ async fn timed_stats_repository_impl() -> anyhow::Result<
         fetched_players = Empty,
         recorded_entries = Empty,
         snapshot_kind = Empty,
+        outcome = Empty,
         otel.status_code = Empty,
     )
 )]
@@ -149,21 +199,14 @@ async fn fetch_and_record<Stats>(
 where
     Stats: StatKind + Send + 'static,
 {
-    let span = tracing::Span::current();
-    let started = Instant::now();
-    let fail = |reason: &'static str, error: anyhow::Error| {
-        span.record("otel.status_code", "error");
-        metrics.record_failure(Stats::NAME, reason);
-        metrics.record_duration(Stats::NAME, "failure", started.elapsed());
-        error
-    };
+    let mut run = StatRun::start(Stats::NAME, metrics);
 
     let snapshot = stats_repository
         .fetch_stats_snapshot_of_all_players()
         .await
-        .map_err(|error| fail("fetch", error))?;
+        .inspect_err(|_| run.fail("fetch"))?;
     let fetched_players = snapshot.len();
-    span.record("fetched_players", fetched_players);
+    run.span.record("fetched_players", fetched_players);
     metrics.players.record(
         u64::try_from(fetched_players).unwrap_or(u64::MAX),
         &[KeyValue::new("stat_kind", Stats::NAME)],
@@ -172,10 +215,11 @@ where
     let recorded = timed_stats_repository
         .record_snapshot(snapshot)
         .await
-        .map_err(|error| fail("record", error))?;
-    span.record("recorded_entries", recorded.recorded_entries);
-    span.record("snapshot_kind", recorded.kind.as_str());
-    metrics.record_duration(Stats::NAME, "success", started.elapsed());
+        .inspect_err(|_| run.fail("record"))?;
+    run.span
+        .record("recorded_entries", recorded.recorded_entries);
+    run.span.record("snapshot_kind", recorded.kind.as_str());
+    run.finish("success");
 
     tracing::info!(
         fetched_players,
@@ -236,9 +280,10 @@ impl ShutdownSignals {
 const PYROSCOPE_FLUSH_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// OpenTelemetry (traces / metrics) の flush を待つ上限。OTLP の送信は 1 回あたり既定 10 秒で
-/// 打ち切られるが、traces と metrics の flush・shutdown が順に送るため全体にも上限を設ける。
-/// Pyroscope の flush と並行して待つので、SIGTERM 後の猶予に収まる
-const OTEL_FLUSH_TIMEOUT: Duration = Duration::from_secs(15);
+/// 打ち切られ、`OtelGuard` の drop は traces → metrics の順に送る。送信先に届かないときでも
+/// traces の 1 回分 (10 秒) を待った後に metrics を送り切れるよう 25 秒取る。
+/// Pyroscope の flush (上限 20 秒) と並行して待つので、SIGTERM 後の猶予 (30 秒) に収まる
+const OTEL_FLUSH_TIMEOUT: Duration = Duration::from_secs(25);
 
 /// ブロッキングな停止処理を専用スレッドで動かし、上限を超えたら待たずに戻る
 /// (`spawn_blocking` だとランタイムの終了時にそのスレッドの完了を待ってしまうため使わない)
@@ -307,14 +352,12 @@ enum Outcome {
 ///
 /// OpenTelemetry の設定は `OTEL_*` 環境変数 (`OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`,
 /// `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_TRACES_SAMPLER`, `OTEL_RESOURCE_ATTRIBUTES` など) から読む。
-/// `OTEL_EXPORTER_OTLP_ENDPOINT` が無い (ローカル実行など) ときは OpenTelemetry を無効にし、
-/// 送り先の無い exporter の警告を出さずに stdout ログだけにする。
+/// 送り先が無い (ローカル実行など) ときは OpenTelemetry を無効にし、
+/// 送り先の無い exporter の警告を出さずに stdout ログだけにする ([`otel_endpoint_configured`])。
 /// `service.version` は `SERVICE_VERSION` (イメージのビルド時に git の commit SHA を入れる) から読む
-fn init_telemetry() -> Result<init_tracing_opentelemetry::Guard, init_tracing_opentelemetry::Error>
-{
-    let otel_enabled = std::env::var_os("OTEL_EXPORTER_OTLP_ENDPOINT")
-        .is_some_and(|endpoint| !endpoint.is_empty());
-
+fn init_telemetry(
+    otel_enabled: bool,
+) -> Result<init_tracing_opentelemetry::Guard, init_tracing_opentelemetry::Error> {
     // ログレベルは RUST_LOG (無ければ info)。
     // ログは stdout の JSON を Alloy が拾って Loki に送る経路を正とし、OTLP logs は使わない。
     // trace_id / span_id を各行に付け、Loki から Tempo の trace へ辿れるようにする
@@ -332,11 +375,41 @@ fn init_telemetry() -> Result<init_tracing_opentelemetry::Guard, init_tracing_op
         .init_subscriber()
 }
 
+/// Pyroscope に付けるバージョン。OpenTelemetry の `service.version` と揃える
+/// (どちらもイメージのビルド時に入れる `SERVICE_VERSION` を優先する)
+fn service_version() -> String {
+    std::env::var("SERVICE_VERSION")
+        .ok()
+        .filter(|version| !version.is_empty())
+        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_owned())
+}
+
+/// OTLP の送り先が環境変数で指定されているか。signal ごとの指定 (`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` など)
+/// だけでも有効にする
+fn otel_endpoint_configured() -> bool {
+    [
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+        "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
+    ]
+    .iter()
+    .any(|key| std::env::var_os(key).is_some_and(|endpoint| !endpoint.is_empty()))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 旧 Sentry の撤去 (GiganticMinecraft/seichi_infra#5613) に伴い SDK を除去した。
     // エラーの検知は stdout ログと Kubernetes 側の Job 失敗アラートに委ねる
-    let mut telemetry_guard = init_telemetry()?;
+    // OpenTelemetry の初期化に失敗しても ingest 本体は止めず、stdout ログだけで続ける
+    // (exporter の構築は subscriber の登録より前に失敗するので、やり直せる)
+    let mut telemetry_guard = match init_telemetry(otel_endpoint_configured()) {
+        Ok(guard) => guard,
+        Err(otel_error) => {
+            let guard = init_telemetry(false)?;
+            tracing::warn!(error = %otel_error, "OpenTelemetry の初期化に失敗したため、無効にして続行します");
+            guard
+        }
+    };
     let metrics = IngestMetrics::new();
 
     // concurrencyPolicy: Replace による置き換えや activeDeadlineSeconds 超過、
@@ -355,7 +428,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 SERVICE_NAME,
                 100,
                 "pyroscope-rs",
-                env!("CARGO_PKG_VERSION"),
+                service_version(),
                 pprof_backend(PprofConfig::default(), BackendConfig::default()),
             )
             .build()
@@ -416,7 +489,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     flush_telemetry(telemetry_guard.otel_guard.take(), pyroscope_agent).await;
 
     match outcome {
-        Outcome::Completed(result) => result?,
+        Outcome::Completed(Ok(())) => {}
+        // 失敗は上で JSON の ERROR ログ (原因の連鎖を含む) に出したので、main から Err を返して
+        // JSON でない "Error: ..." を stderr に重ねて出さないよう、終了コード 1 で直接終わる
+        Outcome::Completed(Err(_)) => std::process::exit(1),
         // 中断時は非 0 で終了する。0 で終了すると、ノードの drain などで Pod だけが
         // 止められた場合に Job が「成功」として完了し、取り込めなかった回が
         // 再試行されず、成功の途絶を見る ConifersIngestorStalled も検知できなくなるため
