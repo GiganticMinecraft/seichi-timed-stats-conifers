@@ -4,6 +4,8 @@
 
 use std::time::Duration;
 
+use tokio::signal::unix::{signal, Signal, SignalKind};
+
 use pyroscope::backend::{pprof_backend, BackendConfig, PprofConfig};
 use pyroscope::pyroscope::{PyroscopeAgentBuilder, PyroscopeAgentRunning};
 use pyroscope::PyroscopeAgent;
@@ -63,14 +65,27 @@ async fn fetch_and_record_all() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// SIGTERM (Kubernetes による Pod 停止) または SIGINT (Ctrl-C) を待つ。
-/// 戻り値は慣例に従った終了コード (128 + シグナル番号)
-async fn wait_for_shutdown_signal(
-    sigterm: &mut tokio::signal::unix::Signal,
-) -> (&'static str, i32) {
-    tokio::select! {
-        _ = sigterm.recv() => ("SIGTERM", 128 + 15),
-        _ = tokio::signal::ctrl_c() => ("SIGINT", 128 + 2),
+/// SIGTERM (Kubernetes による Pod 停止) と SIGINT (Ctrl-C) のハンドラ。
+/// ingest を始める前に両方を登録し、それ以降に届いたシグナルを取りこぼさない
+struct ShutdownSignals {
+    sigterm: Signal,
+    sigint: Signal,
+}
+
+impl ShutdownSignals {
+    fn register() -> std::io::Result<Self> {
+        Ok(Self {
+            sigterm: signal(SignalKind::terminate())?,
+            sigint: signal(SignalKind::interrupt())?,
+        })
+    }
+
+    /// どちらかのシグナルを待つ。戻り値は慣例に従った終了コード (128 + シグナル番号)
+    async fn recv(&mut self) -> (&'static str, i32) {
+        tokio::select! {
+            _ = self.sigterm.recv() => ("SIGTERM", 128 + 15),
+            _ = self.sigint.recv() => ("SIGINT", 128 + 2),
+        }
     }
 }
 
@@ -123,7 +138,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // concurrencyPolicy: Replace による置き換えや activeDeadlineSeconds 超過、
     // ノードの drain などで Pod が止められるときに SIGTERM を受ける。
     // ハンドラの登録は ingest を始める前に済ませる
-    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    let mut shutdown_signals = ShutdownSignals::register()?;
 
     // 継続プロファイリング (Grafana Pyroscope への push)。
     // PYROSCOPE_SERVER_ADDRESS 未設定 (ローカル実行など) の場合は何もしない。
@@ -159,7 +174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let outcome = tokio::select! {
         biased;
         result = fetch_and_record_all() => Outcome::Completed(result),
-        (signal, exit_code) = wait_for_shutdown_signal(&mut sigterm) => {
+        (signal, exit_code) = shutdown_signals.recv() => {
             tracing::warn!(signal, "shutdown signal received, aborting ingestion");
             Outcome::Aborted { exit_code }
         }
