@@ -57,35 +57,42 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 古い run の再実行や後から完了した run で latest が巻き戻らないよう、
-      # default branch の先頭コミットのビルドでだけ latest を付ける
-      - name: Check if this commit is the head of the default branch
-        id: head
+      # default branch のビルドで latest を付ける。初回実行 (run_attempt 1) は concurrency で
+      # push 順に直列化されているので常に付ける。先頭コミットだけに限ると、直後のコミットが
+      # この workflow を起動しない (paths フィルタ等) とき latest が進まなくなるため。
+      # 再実行 (run_attempt 2 以降) は古いコミットの run だと latest が巻き戻るので、
+      # default branch の先頭コミットのときだけ付ける
+      - name: Decide whether to tag latest
+        id: latest
         env:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          is_head=false
+          enable=false
           if [ "${GITHUB_REF}" = "refs/heads/${DEFAULT_BRANCH}" ]; then
+            if [ "${GITHUB_RUN_ATTEMPT}" = 1 ]; then
+              enable=true
             # API が失敗しても sha タグのビルドは止めず、latest だけ付けない
-            if ! head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${DEFAULT_BRANCH}" --jq .sha); then
+            elif ! head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${DEFAULT_BRANCH}" --jq .sha); then
               echo "::warning::default branch の先頭コミットを取得できなかったため latest を付けない"
             elif [ "${head_sha}" = "${GITHUB_SHA}" ]; then
-              is_head=true
+              enable=true
+            else
+              echo "::notice::default branch の先頭ではないコミットの再実行なので latest を付けない"
             fi
           fi
-          echo "is_head=${is_head}" >> "$GITHUB_OUTPUT"
+          echo "enable=${enable}" >> "$GITHUB_OUTPUT"
 
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/giganticminecraft/seichi-timed-stats-conifers-database-migration
-          # latest は default branch 先頭のビルドでだけ付ける。seichi_infra のマニフェストは
+          # latest は default branch のビルドでだけ付ける (条件は上の step)。seichi_infra のマニフェストは
           # latest@sha256:... で参照し、Renovate が digest の変化を追従する
           tags: |
             type=sha,prefix=sha-,suffix=,format=short
-            type=raw,value=latest,enable=${{ steps.head.outputs.is_head }}
+            type=raw,value=latest,enable=${{ steps.latest.outputs.enable }}
 
       - name: Build image for testing
         uses: docker/build-push-action@v7
