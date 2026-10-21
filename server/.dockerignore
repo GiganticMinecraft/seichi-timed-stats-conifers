@@ -1,0 +1,5 @@
+# build context は ./server (CI の docker/build-push-action の context)。
+# ローカルのビルド成果物と環境変数ファイルを context に含めない
+**/target
+.env
+.envrc
