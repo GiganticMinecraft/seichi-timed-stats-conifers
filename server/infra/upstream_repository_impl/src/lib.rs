@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use anyhow::anyhow;
+use tonic_tracing_opentelemetry::middleware::client::{OtelGrpcLayer, OtelGrpcService};
+use tower::Layer;
 
 use buf_generated::gigantic_minecraft::seichi_game_data::v1::read_service_client::ReadServiceClient;
 use domain::models::{
@@ -28,7 +30,10 @@ pub mod config {
     }
 }
 
-type GameDataGrpcClient = ReadServiceClient<tonic::transport::Channel>;
+/// OTel の gRPC クライアント層で包んだ channel。RPC ごとに client span を作り、
+/// 上流 (seichi-game-data-server) へのリクエストに W3C trace context (traceparent) を付ける。
+/// OTel が無効 (`OTEL_EXPORTER_OTLP_ENDPOINT` 未設定) のときは有効な span context が無いため何も付かない
+type GameDataGrpcClient = ReadServiceClient<OtelGrpcService<tonic::transport::Channel>>;
 
 /// 上流への TCP 接続 (再接続を含む) の上限。到達不能なときに Job の実行期限
 /// (activeDeadlineSeconds 240) まで待ち続けないようにする
@@ -53,7 +58,7 @@ impl GrpcUpstreamRepository {
                 .timeout(REQUEST_TIMEOUT)
                 .connect()
                 .await?;
-        let client = ReadServiceClient::new(channel);
+        let client = ReadServiceClient::new(OtelGrpcLayer.layer(channel));
         Ok(Self { client })
     }
 

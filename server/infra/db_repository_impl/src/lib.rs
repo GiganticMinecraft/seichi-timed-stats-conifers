@@ -3,8 +3,11 @@ use diesel_async::pooled_connection::deadpool::{Object, Pool};
 use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::RunQueryDsl;
 use diesel_async::{AsyncConnection, AsyncMysqlConnection};
-use domain::repositories::TimeBasedSnapshotSearchCondition;
-use domain::{models::StatsSnapshot, repositories::PlayerTimedStatsRepository};
+use domain::models::StatsSnapshot;
+use domain::repositories::{
+    PlayerTimedStatsRepository, RecordedSnapshot, RecordedSnapshotKind,
+    TimeBasedSnapshotSearchCondition,
+};
 use std::fmt::Debug;
 
 use crate::structures_embedded_in_rdb::{
@@ -66,7 +69,10 @@ impl<
     > PlayerTimedStatsRepository<Stats> for DatabaseConnector
 {
     #[tracing::instrument(skip(self), fields(stats_type = std::any::type_name::<Stats>()))]
-    async fn record_snapshot(&self, snapshot: StatsSnapshot<Stats>) -> anyhow::Result<()> {
+    async fn record_snapshot(
+        &self,
+        snapshot: StatsSnapshot<Stats>,
+    ) -> anyhow::Result<RecordedSnapshot> {
         let mut conn = self.pool.get().await?;
         sql_query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
             .execute(&mut conn)
@@ -90,13 +96,20 @@ impl<
                 if let DiffSequenceChoice::OptimalAccordingToHeuristics(diff_sequence) =
                     diff_sequence_choice
                 {
-                    Stats::create_diff_snapshot_point_on(diff_sequence, snapshot, conn).await
-                } else {
-                    Stats::create_full_snapshot(snapshot, conn).await
+                    let recorded_entries =
+                        Stats::create_diff_snapshot_point_on(diff_sequence, snapshot, conn).await?;
+                    return Ok(RecordedSnapshot {
+                        kind: RecordedSnapshotKind::Diff,
+                        recorded_entries,
+                    });
                 }
-            } else {
-                Stats::create_full_snapshot(snapshot, conn).await
             }
+
+            let recorded_entries = Stats::create_full_snapshot(snapshot, conn).await?;
+            Ok(RecordedSnapshot {
+                kind: RecordedSnapshotKind::Full,
+                recorded_entries,
+            })
         })
         .await
     }
