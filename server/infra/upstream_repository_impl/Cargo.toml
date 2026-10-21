@@ -15,4 +15,9 @@ anyhow = "1.0.82"
 tracing = "0.1.39"
 async-trait = "0.1.80"
 chrono = "0.4.38"
+# 上流への gRPC リクエストに trace context (traceparent) を注入する。
+# tracing_level_info: client span を INFO で出す (RUST_LOG=info で動かすため)。
+# seichi-game-data-publisher と同じ構成
+tonic-tracing-opentelemetry = { version = "0.42", features = ["tracing_level_info"] }
+tower = "0.5"
 

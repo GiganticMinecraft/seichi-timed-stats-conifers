@@ -81,19 +81,22 @@ pub trait HasIncrementalSnapshotTables<DBConnection>: Sized + Eq + Clone {
 pub trait HasIncrementalSnapshotTablesDefaultMethods<DBConnection: Send>:
     HasIncrementalSnapshotTables<DBConnection> + Debug
 {
+    /// 戻り値は書き込んだプレーヤーごとの値の件数
     #[tracing::instrument(skip(conn))]
     async fn create_full_snapshot(
         snapshot: StatsSnapshot<Self>,
         conn: &mut DBConnection,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<usize> {
         let inserted_point_id = Self::create_full_snapshot_point(conn).await?;
+        let recorded_entries = snapshot.len();
 
         Self::insert_all_stats_at_full_snapshot_point(
             inserted_point_id,
             snapshot.player_stats,
             conn,
         )
-        .await
+        .await?;
+        Ok(recorded_entries)
     }
 
     #[tracing::instrument(skip(conn))]
@@ -160,12 +163,13 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods<DBConnection: Send>:
         }
     }
 
+    /// 戻り値は書き込んだプレーヤーごとの値 (前回から変わった値) の件数
     #[tracing::instrument(skip(conn))]
     async fn create_diff_snapshot_point_on(
         diff_sequence: DiffSequence<Self>,
         snapshot: StatsSnapshot<Self>,
         conn: &mut DBConnection,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<usize> {
         let root_point_id = diff_sequence.base_point.id;
         let previous_point_id = diff_sequence.diff_points.last().map(|p| p.id);
         let diff = diff_sequence.into_snapshot_at_the_tip().diff_to(&snapshot);
@@ -178,12 +182,14 @@ pub trait HasIncrementalSnapshotTablesDefaultMethods<DBConnection: Send>:
         )
         .await?;
 
+        let recorded_entries = diff.player_stats_diffs.len();
         Self::insert_all_stats_at_diff_snapshot_point(
             inserted_diff_point_id,
             diff.player_stats_diffs,
             conn,
         )
-        .await
+        .await?;
+        Ok(recorded_entries)
     }
 
     #[tracing::instrument(skip(conn))]

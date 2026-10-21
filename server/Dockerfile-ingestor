@@ -40,5 +40,9 @@ RUN cargo build --release --locked --bin seichi-timed-stats-conifers-ingestor
 FROM gcr.io/distroless/cc-debian13:nonroot@sha256:b7e81cb1af38d9345680e68bcf564d388f96304e25222030fc8c051faf8565b3
 LABEL org.opencontainers.image.source=https://github.com/GiganticMinecraft/seichi-timed-stats-conifers
 COPY --from=build-env --link /app/target/release/seichi-timed-stats-conifers-ingestor /
+# OpenTelemetry の service.version (init-tracing-opentelemetry が SERVICE_VERSION を読む)。
+# CI はビルドした commit SHA を渡す。ビルドキャッシュを崩さないよう、最終ステージでだけ使う
+ARG GIT_SHA=unknown
+ENV SERVICE_VERSION=${GIT_SHA}
 USER 65532:65532
 CMD ["/seichi-timed-stats-conifers-ingestor"]
