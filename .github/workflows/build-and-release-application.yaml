@@ -75,8 +75,8 @@ jobs:
       image_tag: ${{ steps.meta.outputs.tags }}
     concurrency:
       group: docker-build-${{ matrix.component_name }}-${{ github.ref }}
-      # lint-and-test の完了順で後発の run が先にこの job に入ることがある。master では
-      # 新しいコミットのビルドを古いコミットの run が cancel しないよう、キャンセルせず順に待つ
+      # lint-and-test の完了順や古い run の再実行で、古いコミットの run が後からこの job に
+      # 入ることがある。master では新しいコミットのビルドを cancel しないよう、キャンセルせず順に待つ
       cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
     steps:
       - name: checkout
@@ -103,8 +103,10 @@ jobs:
         run: |
           is_head=false
           if [ "${GITHUB_REF}" = "refs/heads/${DEFAULT_BRANCH}" ]; then
-            head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${DEFAULT_BRANCH}" --jq .sha)
-            if [ "${head_sha}" = "${GITHUB_SHA}" ]; then
+            # API が失敗しても sha タグのビルドは止めず、latest だけ付けない
+            if ! head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${DEFAULT_BRANCH}" --jq .sha); then
+              echo "::warning::default branch の先頭コミットを取得できなかったため latest を付けない"
+            elif [ "${head_sha}" = "${GITHUB_SHA}" ]; then
               is_head=true
             fi
           fi
