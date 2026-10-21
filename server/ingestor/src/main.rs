@@ -2,8 +2,11 @@
 #![warn(clippy::nursery, clippy::pedantic)]
 #![allow(clippy::cargo_common_metadata, clippy::multiple_crate_versions)]
 
+use std::time::Duration;
+
 use pyroscope::backend::{pprof_backend, BackendConfig, PprofConfig};
-use pyroscope::pyroscope::PyroscopeAgentBuilder;
+use pyroscope::pyroscope::{PyroscopeAgentBuilder, PyroscopeAgentRunning};
+use pyroscope::PyroscopeAgent;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
@@ -71,6 +74,38 @@ async fn wait_for_shutdown_signal(
     }
 }
 
+/// Pyroscope の flush (停止処理) を待つ上限。
+/// agent の停止は内部タイマーの周期 (10 秒) の区切りまで待つため数秒かかる。
+/// 依存クレート内部のエラー経路で無期限に待つことがあるため上限を設け、
+/// SIGTERM 後の猶予 (terminationGracePeriodSeconds 既定 30 秒) 内に終了できるようにする
+const PYROSCOPE_FLUSH_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// 短命な `CronJob` のため、プロセス終了前にプロファイルを flush する。
+/// 停止処理はブロッキングなので専用スレッドで動かし、上限を超えたら待たずに戻る
+/// (`spawn_blocking` だとランタイムの終了時にそのスレッドの完了を待ってしまうため使わない)
+async fn flush_pyroscope(agent: PyroscopeAgent<PyroscopeAgentRunning>) {
+    let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        match agent.stop() {
+            Ok(agent) => agent.shutdown(),
+            Err(error) => tracing::warn!(%error, "Pyroscope agent の停止に失敗しました"),
+        }
+        let _ = done_tx.send(());
+    });
+    if tokio::time::timeout(PYROSCOPE_FLUSH_TIMEOUT, done_rx)
+        .await
+        .is_err()
+    {
+        tracing::warn!("Pyroscope agent の停止が時間内に終わらなかったため、待たずに終了します");
+    }
+}
+
+/// ingest を最後まで実行したか、シグナルで中断したか
+enum Outcome {
+    Completed(anyhow::Result<()>),
+    Aborted { exit_code: i32 },
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // initialize tracing
@@ -84,6 +119,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )),
         )
         .init();
+
+    // concurrencyPolicy: Replace による置き換えや activeDeadlineSeconds 超過、
+    // ノードの drain などで Pod が止められるときに SIGTERM を受ける。
+    // ハンドラの登録は ingest を始める前に済ませる
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
 
     // 継続プロファイリング (Grafana Pyroscope への push)。
     // PYROSCOPE_SERVER_ADDRESS 未設定 (ローカル実行など) の場合は何もしない。
@@ -100,7 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 pprof_backend(PprofConfig::default(), BackendConfig::default()),
             )
             .build()
-            .and_then(pyroscope::PyroscopeAgent::start);
+            .and_then(PyroscopeAgent::start);
 
             match started {
                 Ok(agent) => Some(agent),
@@ -111,38 +151,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
 
-    // concurrencyPolicy: Replace による置き換えや activeDeadlineSeconds 超過、
-    // ノードの drain などで Pod が止められるときに SIGTERM を受ける。
-    // 進行中の ingest を drop して中断し (未コミットのトランザクションは
-    // ロールバックされる)、Pyroscope の flush を通してから終了する
-    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
-    let mut aborted_exit_code = None;
-    let result = tokio::select! {
-        result = fetch_and_record_all() => result,
+    // シグナルを受けたら進行中の ingest を drop して中断する。統計の種類ごとに
+    // 別トランザクションで記録するため、中断時点で記録済みの種類はそのまま残り、
+    // 実行中のトランザクションだけがロールバックされる。
+    // biased: ingest の完了とシグナルが同時に準備できた場合は完了を優先し、
+    // 記録し終えた回を「中断」として再試行させない
+    let outcome = tokio::select! {
+        biased;
+        result = fetch_and_record_all() => Outcome::Completed(result),
         (signal, exit_code) = wait_for_shutdown_signal(&mut sigterm) => {
             tracing::warn!(signal, "shutdown signal received, aborting ingestion");
-            aborted_exit_code = Some(exit_code);
-            Ok(())
+            Outcome::Aborted { exit_code }
         }
     };
 
-    // 短命な CronJob のため、プロセス終了前にプロファイルを flush する
-    // (ingest が失敗した場合も flush してから終了する)
+    // ingest が失敗・中断した場合も flush してから終了する
     if let Some(agent) = pyroscope_agent {
-        match agent.stop() {
-            Ok(agent) => agent.shutdown(),
-            Err(error) => tracing::warn!(%error, "Pyroscope agent の停止に失敗しました"),
-        }
+        flush_pyroscope(agent).await;
     }
 
-    // 中断時は非 0 で終了する。0 で終了すると、ノードの drain などで Pod だけが
-    // 止められた場合に Job が「成功」として完了し、取り込めなかった回が
-    // 再試行されず、成功の途絶を見る ConifersIngestorStalled も検知できなくなるため
-    if let Some(exit_code) = aborted_exit_code {
-        std::process::exit(exit_code);
+    match outcome {
+        Outcome::Completed(result) => result?,
+        // 中断時は非 0 で終了する。0 で終了すると、ノードの drain などで Pod だけが
+        // 止められた場合に Job が「成功」として完了し、取り込めなかった回が
+        // 再試行されず、成功の途絶を見る ConifersIngestorStalled も検知できなくなるため
+        Outcome::Aborted { exit_code } => std::process::exit(exit_code),
     }
-
-    result?;
 
     Ok(())
 }

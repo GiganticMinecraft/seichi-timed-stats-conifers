@@ -34,9 +34,10 @@ type GameDataGrpcClient = ReadServiceClient<tonic::transport::Channel>;
 /// (activeDeadlineSeconds 240) まで待ち続けないようにする
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// 1 リクエストあたりの上限。全プレーヤー分の統計を 1 レスポンスで返すため長めに取るが、
-/// Job の実行期限 (activeDeadlineSeconds 240) よりは短くする。
-/// tonic の仕様上、レスポンスヘッダの受信までが対象で、ボディ受信中の停滞は対象外
+/// 1 リクエストあたりの上限。全プレーヤー分の統計を 1 レスポンスで返すため長めに取る。
+/// 統計 4 種を順に取得するので実行全体の上限にはならない (全体は Job の
+/// activeDeadlineSeconds が打ち切る)。tonic の仕様上、レスポンスヘッダの受信までが
+/// 対象で、ボディ受信中の停滞は対象外
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug)]
