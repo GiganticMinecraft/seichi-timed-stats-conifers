@@ -37,7 +37,7 @@ RUN cargo build --release --locked --bin seichi-timed-stats-conifers-ingestor
 # runAsNonRoot の前提なので明示する)。バイナリが動的リンクするのは glibc (libc / libm) と
 # libgcc_s だけ (TLS は rustls + aws-lc-rs の静的リンク、DB は純 Rust の mysql_async、
 # flate2 は miniz_oxide) なので、libz などの追加コピーは不要
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:b7e81cb1af38d9345680e68bcf564d388f96304e25222030fc8c051faf8565b3
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:3ee00291cf386ec52a552e6a858d555debd74776eb4bfa53fa3df2cd6677515e
 LABEL org.opencontainers.image.source=https://github.com/GiganticMinecraft/seichi-timed-stats-conifers
 COPY --from=build-env --link /app/target/release/seichi-timed-stats-conifers-ingestor /
 # OpenTelemetry の service.version (init-tracing-opentelemetry が SERVICE_VERSION を読む)。
