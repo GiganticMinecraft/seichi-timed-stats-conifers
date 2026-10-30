@@ -2,7 +2,7 @@
 # base の digest ピンはビルド入力の固定のため (digest と cargo-chef のバージョンは Renovate が追従)。
 # タグの rust-1.99.1 は Renovate では上がらないので、/rust-toolchain.toml を上げるときに手で揃えること。
 # Debian の世代 (trixie) は runtime (cc-debian13) の glibc と揃える
-FROM lukemathwalker/cargo-chef:0.1.78-rust-1.99.1-trixie@sha256:cccf15fc75944521a3aa230fe72a101ee0edc65cd1d4b50b5914ce25317c1805 AS chef
+FROM lukemathwalker/cargo-chef:0.1.78-rust-1.99.1-trixie@sha256:5650c1203a4f2497c6268427c034efcb98f38ecbab86061b3d78d128aba43a1b AS chef
 WORKDIR /app
 
 FROM chef AS planner
