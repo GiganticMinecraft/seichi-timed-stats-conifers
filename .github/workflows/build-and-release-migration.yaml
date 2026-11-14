@@ -29,7 +29,7 @@ jobs:
       # (待機できる run はグループに 1 つだけで、さらに新しい run が来ると待機中の方は cancel される)
       cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
     services:
-      # 本番相当 (MariaDB 12.3.3)。二重実行の回帰テスト用
+      # 本番相当 (MariaDB 12.3 系)。二重実行の回帰テスト用
       mariadb:
         image: mariadb:12.3.3
         env:
