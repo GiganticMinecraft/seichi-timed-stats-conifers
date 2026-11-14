@@ -29,9 +29,9 @@ jobs:
       # (待機できる run はグループに 1 つだけで、さらに新しい run が来ると待機中の方は cancel される)
       cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
     services:
-      # 本番相当 (MariaDB 12.3 系)。二重実行の回帰テスト用
+      # 本番相当 (MariaDB 12.3.3)。二重実行の回帰テスト用
       mariadb:
-        image: mariadb:12.3
+        image: mariadb:12.3.3
         env:
           MARIADB_ROOT_PASSWORD: test
           MARIADB_DATABASE: conifers-test
@@ -114,7 +114,7 @@ jobs:
       # 1 回目: 初回マイグレーションが適用されること
       # 2 回目: no-op であること (再実行しようとしたら fail)
       # 最後に、適用記録の version が期待形式 (14 桁数字) で読めることを DB 側でも確認
-      - name: 'Regression test: run migration twice against MariaDB 11.8'
+      - name: 'Regression test: run migration twice against MariaDB 12.3.3'
         run: |
           set -euxo pipefail
           run_migration() {

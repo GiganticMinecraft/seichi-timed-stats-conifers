@@ -5,7 +5,7 @@ services:
   db:
     # プロダクションが利用しているバージョンと合わせるべき
     # https://github.com/GiganticMinecraft/seichi_infra/blob/ac6e654dacc93e92b57095e1eb9c25d11b45be22/seichi-onp-k8s/manifests/seichi-kubernetes/apps/seichi-minecraft/mariadb/mariadb.yaml#L14
-    image: mariadb:12.3
+    image: mariadb:12.3.3
     environment:
       MYSQL_USER: mariadb
       MYSQL_PASSWORD: password
