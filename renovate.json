@@ -28,6 +28,12 @@
       "matchManagers": ["cargo"],
       "matchCurrentVersion": "/^0/",
       "automerge": true
+    },
+    {
+      "description": "disable MariaDB container image updates",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["mariadb", "docker.io/library/mariadb"],
+      "enabled": false
     }
   ]
 }
