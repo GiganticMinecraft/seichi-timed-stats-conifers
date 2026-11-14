@@ -1,7 +1,7 @@
 use diesel::sql_query;
-use diesel_async::pooled_connection::deadpool::{Object, Pool};
-use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::RunQueryDsl;
+use diesel_async::pooled_connection::AsyncDieselConnectionManager;
+use diesel_async::pooled_connection::deadpool::{Object, Pool};
 use diesel_async::{AsyncConnection, AsyncMysqlConnection};
 use domain::models::StatsSnapshot;
 use domain::repositories::{
@@ -11,7 +11,7 @@ use domain::repositories::{
 use std::fmt::Debug;
 
 use crate::structures_embedded_in_rdb::{
-    choose_base_diff_sequence_for_snapshot_with_heuristics, DiffSequence, DiffSequenceChoice,
+    DiffSequence, DiffSequenceChoice, choose_base_diff_sequence_for_snapshot_with_heuristics,
 };
 use stats_with_incremental_snapshot_tables::{
     HasIncrementalSnapshotTables, HasIncrementalSnapshotTablesDefaultMethods,
@@ -64,9 +64,8 @@ impl DatabaseConnector {
 }
 
 #[async_trait::async_trait]
-impl<
-        Stats: Debug + HasIncrementalSnapshotTables<Object<AsyncMysqlConnection>> + Send + 'static,
-    > PlayerTimedStatsRepository<Stats> for DatabaseConnector
+impl<Stats: Debug + HasIncrementalSnapshotTables<Object<AsyncMysqlConnection>> + Send + 'static>
+    PlayerTimedStatsRepository<Stats> for DatabaseConnector
 {
     #[tracing::instrument(skip(self), fields(stats_type = std::any::type_name::<Stats>()))]
     async fn record_snapshot(

@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::process::{exit, Command, ExitStatus};
+use std::process::{Command, ExitStatus, exit};
 
 // From
 // https://github.com/neoeinstein/protoc-gen-prost/blob/fe8e21a9d319c305cda0cfddd146ccddc73d36dd/example/build-with-buf/build.rs

@@ -4,18 +4,18 @@
 
 use std::time::{Duration, Instant};
 
-use tokio::signal::unix::{signal, Signal, SignalKind};
+use tokio::signal::unix::{Signal, SignalKind, signal};
 
 use init_tracing_opentelemetry::otlp::OtelGuard;
 use init_tracing_opentelemetry::resource::DetectResource;
 use init_tracing_opentelemetry::{FmtTraceContext, TracingConfig};
-use opentelemetry::metrics::{Counter, Gauge, Histogram};
 use opentelemetry::KeyValue;
-use pyroscope::backend::{pprof_backend, BackendConfig, PprofConfig};
-use pyroscope::pyroscope::{PyroscopeAgentBuilder, PyroscopeAgentRunning};
+use opentelemetry::metrics::{Counter, Gauge, Histogram};
 use pyroscope::PyroscopeAgent;
-use tracing::field::Empty;
+use pyroscope::backend::{BackendConfig, PprofConfig, pprof_backend};
+use pyroscope::pyroscope::{PyroscopeAgentBuilder, PyroscopeAgentRunning};
 use tracing::Instrument;
+use tracing::field::Empty;
 
 use domain::models::{BreakCount, BuildCount, PlayTicks, VoteCount};
 use domain::repositories::{PlayerStatsRepository, PlayerTimedStatsRepository};
@@ -114,21 +114,21 @@ impl IngestMetrics {
 
 async fn stats_repository_impl() -> anyhow::Result<
     impl PlayerStatsRepository<BreakCount>
-        + PlayerStatsRepository<BuildCount>
-        + PlayerStatsRepository<PlayTicks>
-        + PlayerStatsRepository<VoteCount>,
+    + PlayerStatsRepository<BuildCount>
+    + PlayerStatsRepository<PlayTicks>
+    + PlayerStatsRepository<VoteCount>,
 > {
-    use infra_upstream_repository_impl::{config::GrpcClient, GrpcUpstreamRepository};
+    use infra_upstream_repository_impl::{GrpcUpstreamRepository, config::GrpcClient};
     GrpcUpstreamRepository::try_new(GrpcClient::from_env()?).await
 }
 
 async fn timed_stats_repository_impl() -> anyhow::Result<
     impl PlayerTimedStatsRepository<BreakCount>
-        + PlayerTimedStatsRepository<BuildCount>
-        + PlayerTimedStatsRepository<PlayTicks>
-        + PlayerTimedStatsRepository<VoteCount>,
+    + PlayerTimedStatsRepository<BuildCount>
+    + PlayerTimedStatsRepository<PlayTicks>
+    + PlayerTimedStatsRepository<VoteCount>,
 > {
-    use infra_db_repository_impl::{config::Database, DatabaseConnector};
+    use infra_db_repository_impl::{DatabaseConnector, config::Database};
     DatabaseConnector::try_new(Database::from_env()?).await
 }
 
