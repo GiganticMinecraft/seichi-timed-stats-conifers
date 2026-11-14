@@ -22,7 +22,7 @@ pub trait RunFirstOptionalDsl<Conn>: Sized + RunQueryDsl<Conn> {
         U: Send + 'conn,
         Conn: AsyncConnection,
         Self: diesel::query_dsl::methods::LimitDsl,
-        Limit<Self>: LoadQuery<'query, Conn, U> + Send + 'query,
+        Limit<Self>: LoadQuery<'query, Conn, U> + RunQueryDsl<Conn> + Send + 'query,
     {
         self.limit(1)
             .load::<U>(conn)
