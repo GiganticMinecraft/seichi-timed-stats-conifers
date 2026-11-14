@@ -8,9 +8,9 @@ use crate::structures_embedded_in_rdb::{
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
 
+use TimeBasedSnapshotSearchCondition::NewestBefore;
 use domain::models::{Player, PlayerUuidString, StatsSnapshot};
 use domain::repositories::TimeBasedSnapshotSearchCondition;
-use TimeBasedSnapshotSearchCondition::NewestBefore;
 
 #[async_trait::async_trait]
 pub trait HasIncrementalSnapshotTables<DBConnection>: Sized + Eq + Clone {

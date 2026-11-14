@@ -1,7 +1,7 @@
-use diesel::dsl::Limit;
 use diesel::QueryResult;
+use diesel::dsl::Limit;
 use diesel_async::methods::LoadQuery;
-use diesel_async::{return_futures, AsyncConnection, RunQueryDsl};
+use diesel_async::{AsyncConnection, RunQueryDsl, return_futures};
 use futures_util::FutureExt;
 use std::future::Future;
 
