@@ -5,6 +5,17 @@
   ],
   "packageRules": [
     {
+      "description": "group Rust toolchain version updates",
+      "matchManagers": ["rust-toolchain"],
+      "groupName": "Rust version"
+    },
+    {
+      "description": "group Rust container image version updates",
+      "matchManagers": ["dockerfile"],
+      "matchPackageNames": ["docker.io/library/rust"],
+      "groupName": "Rust version"
+    },
+    {
       "description": "automerge Rust crate updates (>= 1.0.0)",
       "matchUpdateTypes": ["minor", "patch"],
       "matchManagers": ["cargo"],
