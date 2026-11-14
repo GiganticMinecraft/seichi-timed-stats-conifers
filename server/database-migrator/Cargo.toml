@@ -15,6 +15,6 @@ publish = false
 # mysql feature は純 Rust の mysql_async を使う。libmysqlclient (C) に依存しない
 # ことが要件 (2026-08-02 インシデント、conifers#201)。
 # migrations feature が AsyncMigrationHarness を提供する (0.9.2 以降)
-diesel-async = { version = "0.9.2", default-features = false, features = ["mysql", "migrations"] }
+diesel-async = { version = "0.10.0", default-features = false, features = ["mysql", "migrations"] }
 diesel_migrations = "2.3"
 tokio = { version = "1", default-features = false, features = ["macros", "rt-multi-thread"] }
